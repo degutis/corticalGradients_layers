@@ -1,0 +1,3 @@
+[submodule "fmri-analysis"]
+	path = fmri-analysis
+	url = https://github.com/dchaimow/fmri-analysis
