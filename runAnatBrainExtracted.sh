@@ -61,10 +61,22 @@ fslmaths -dt int \
         ${SUBJECTS_DIR}/${subject}/mri/HCP-MMP1_GM.nii.gz
 
 
-flirt -in /Users/karolis/Desktop/kenshu_dataset/derivatives/freesurfer/sub-02/mri/HCP-MMP1.nii \
-    -ref /Users/karolis/Desktop/kenshu_dataset/derivatives/sub-02/VASO_func/sub-02_mean_func.nii \
-    -out /Users/karolis/Desktop/kenshu_dataset/derivatives/sub-02/atlas/Glasser_in_func_full.nii \
+antsApplyTransforms -i /Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/sub-01/mri/HCP-MMP1.nii.gz \
+                    -r /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/sub-01_bold_SMSEPI_mc_MEAN.nii \
+                    -o /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/HCP-MMP1_in_func_full.nii \
+                    -n NearestNeighbor \
+                    -t /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/fs_to_func_0GenericAffine.mat /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/fs_to_func_1Warp.nii.gz\
+                    -v
+
+flirt -in /Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/sub-01/mri/HCP-MMP1.nii \
+    -ref /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/sub-01_bold_SMSEPI_mc_MEAN.nii \
+    -out /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/HCP-MMP1_in_func_full.nii \
     -applyxfm -interp nearestneighbour -usesqform
+
+#flirt -in /Users/karolis/Desktop/kenshu_dataset/derivatives/freesurfer/sub-02/mri/HCP-MMP1.nii \
+#    -ref /Users/karolis/Desktop/kenshu_dataset/derivatives/sub-02/VASO_func/sub-02_mean_func.nii \
+#    -out /Users/karolis/Desktop/kenshu_dataset/derivatives/sub-02/atlas/Glasser_in_func_full.nii \
+#    -applyxfm -interp nearestneighbour -usesqform
 
 
 flirt -in /Users/karolis/Desktop/highRes_resting/derivatives/freesurfer/sub-01/mri/HCP-MMP1_GM.nii.gz \

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-subject=sub-01
+subject=sub-02
 fs_dir=/Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/${subject}/
-bold_file=${subject}_bold_SMSEPI_mc_MEAN.nii
-bold_file_withoutExt=${subject}_bold_SMSEPI_mc_MEAN
-func_dir=/Users/karolis/Desktop/highRes_Resting/derivatives/sub-01/func
+bold_file=${subject}_bold_SMSEPI_mc_MEANED_full.nii
+bold_file_withoutExt=${subject}_bold_SMSEPI_mc_MEANED_full
+func_dir=/Users/karolis/Desktop/highRes_Resting/${subject}/func/
 
 cd ${func_dir}
 
@@ -15,7 +15,7 @@ N4BiasFieldCorrection -i ${bold_file} -o ${n4bold_file}
 bold_file=${n4bold_file}
 
 bold_brain_file=${bold_file_withoutExt}_n4_brain.nii
-bet ${bold_file} ${bold_brain_file} -f 0.075
+bet ${bold_file} ${bold_brain_file} -f 0.07
 bold_file=${bold_brain_file}
 
 gunzip ${bold_file}.gz

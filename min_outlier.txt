@@ -1,1 +1,1 @@
-***** min outlier: run 01, TR 23
+***** min outlier: run 04, TR 103

@@ -2,21 +2,21 @@
 
 export SUBJECTS_DIR=/Users/karolis/Desktop/highRes_resting/derivatives/freesurfer
 
-subject=sub-01
+subject=sub-02
 refAnatDir=/Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space
-# need to cd to the palce where lh.HCP is stored. 
+
 mri_surf2surf --srcsubject fsaverage \
             --trgsubject ${subject} \
             --hemi lh \
-            --sval-annot lh.HCP-MMP1.annot \
+            --sval-annot /Users/karolis/Desktop/repos/HCP_surfaces/lh.HCP-MMP1.annot \
             --tval ${SUBJECTS_DIR}/${subject}/label/lh.HCP-MMP1.annot
 
 mri_surf2surf --srcsubject fsaverage \
             --trgsubject ${subject} \
             --hemi rh \
-            --sval-annot rh.HCP-MMP1.annot \
+            --sval-annot /Users/karolis/Desktop/repos/HCP_surfaces/rh.HCP-MMP1.annot \
             --tval ${SUBJECTS_DIR}/${subject}/label/rh.HCP-MMP1.annot
 
 mri_aparc2aseg --s ${subject} --annot HCP-MMP1 --o ${SUBJECTS_DIR}/${subject}/mri/HCP-MMP1.nii.gz --labelwm

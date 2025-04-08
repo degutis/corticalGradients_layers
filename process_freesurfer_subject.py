@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 
-studyDataDir = "/Users/karolis/Desktop/kenshu_dataset"  # Set your study data directory
+studyDataDir = "/Users/karolis/Desktop/highRes_resting"  # Set your study data directory
 subject = "sub-02"
 sys.path.append('/Users/karolis/Desktop/dynamicConnectivityMovieWatching_2025/fmri-analysis/library')
 

@@ -10,6 +10,9 @@ from matplotlib.colors import ListedColormap
 from sklearn.cluster import KMeans
 import hcp_utils as hcp
 import warnings
+from collections import defaultdict
+import re
+
 
 
 
@@ -54,6 +57,61 @@ class LaminarRestingState:
         ])
 
         return adj_matrix_full
+    
+    def get_adj_matrix_withinLayers_multRuns(self):
+        
+        layer_groups = defaultdict(list)
+        
+        for file in self.npy_files:
+            print(file)
+            try:
+                layer_str = file.split('_')[-1].replace('.npy', '')
+                layer_num = int(layer_str)
+                layer_groups[layer_num].append(file)
+            except Exception as e:
+                raise ValueError(f"Could not extract layer number from filename: {file}") from e
+
+        sorted_layers = sorted(layer_groups.items())
+        adj_matrix_within = np.empty((self.N, self.N, self.num_layers))
+
+        for i, (layer_num, files) in enumerate(sorted_layers):
+            print(f"Processing Layer {layer_num} with {len(files)} run(s)")
+            all_time_series = []
+
+            for file in files:
+                file_path = os.path.join(self.data_dir, file)
+                time_series = np.load(file_path)
+                all_time_series.append(time_series)
+
+            concatenated = np.concatenate(all_time_series, axis=1)
+            print(f"Concatenated shape: {concatenated.shape}")
+
+            # Compute correlation
+            corr_matrix = np.corrcoef(concatenated)
+            corr_matrix = np.nan_to_num(corr_matrix, nan=0)
+            np.fill_diagonal(corr_matrix, 1)
+
+            # Threshold
+            threshold = np.percentile(np.abs(corr_matrix), self.setThresh)
+            adj_matrix = np.where(np.abs(corr_matrix) >= threshold, corr_matrix, 0)
+            adj_matrix_within[:, :, i] = np.abs(adj_matrix)
+
+        # Build inter-layer identity matrices
+        I_N = np.eye(self.N)
+        blocks = []
+
+        for i in range(self.num_layers):
+            row_blocks = []
+            for j in range(self.num_layers):
+                if i == j:
+                    row_blocks.append(adj_matrix_within[:, :, i])
+                else:
+                    row_blocks.append(I_N)
+            blocks.append(row_blocks)
+
+        adj_matrix_full = np.block(blocks)
+        
+        return adj_matrix_full
 
 
     def get_adj_matrix_full(self):
@@ -77,6 +135,44 @@ class LaminarRestingState:
         
         return np.abs(adj_full), all_series_array
 
+
+    def get_adj_matrix_full_multRuns(self):
+        
+        layer_groups = defaultdict(list)
+        
+        for file in self.npy_files:
+            print(file)
+            try:
+                layer_str = file.split('_')[-1].replace('.npy', '')
+                layer_num = int(layer_str)
+                layer_groups[layer_num].append(file)
+            except Exception as e:
+                raise ValueError(f"Could not extract layer number from filename: {file}") from e
+
+        sorted_layers = sorted(layer_groups.items())
+        adj_matrix_within = np.empty((self.N, self.N, self.num_layers))
+        concatenated_full = []
+        for i, (layer_num, files) in enumerate(sorted_layers):
+            print(f"Processing Layer {layer_num} with {len(files)} run(s)")
+            all_time_series = []
+
+            for file in files:
+                file_path = os.path.join(self.data_dir, file)
+                time_series = np.load(file_path)
+                all_time_series.append(time_series)
+
+            concatenated = np.concatenate(all_time_series, axis=1)
+            concatenated_full.append(concatenated)
+            print(f"Concatenated shape: {concatenated.shape}")
+
+        all_series_array = np.concatenate(concatenated_full, axis=0)
+        full_corr = np.corrcoef(all_series_array)
+        full_corr = np.nan_to_num(full_corr, nan=0)
+        np.fill_diagonal(full_corr, 1)
+        threshold = np.percentile(np.abs(full_corr), self.setThresh)
+        adj_full = np.where(np.abs(full_corr) >= threshold, full_corr, 0)
+        
+        return np.abs(adj_full), all_series_array
 
 
     def get_adj_matrix_singleLayer(self, layerNum):
