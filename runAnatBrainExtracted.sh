@@ -63,7 +63,7 @@ fslmaths -dt int \
 
 antsApplyTransforms -i /Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/sub-01/mri/HCP-MMP1.nii.gz \
                     -r /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/sub-01_bold_SMSEPI_mc_MEAN.nii \
-                    -o /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/HCP-MMP1_in_func_full.nii \
+                    -o /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/HCP-MMP1_in-func.nii \
                     -n NearestNeighbor \
                     -t /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/fs_to_func_0GenericAffine.mat /Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/sub-01/ses-02/fs_to_func_1Warp.nii.gz\
                     -v

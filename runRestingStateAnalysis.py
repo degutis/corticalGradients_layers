@@ -1,14 +1,14 @@
 import laminarRestingState as lrs
 
-data_dir = '../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs'
+data_dir = '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs'
 
 N = 360
 setThresh = 85
 hcplabels = True
 
 #analysis_types = ["FeedforwardFeedback", "WithinLayer", "BetweenLayers", "FullLayer"]
-analysis_types = ["FullLayer"]
-restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-01/ses-02/HCP-MMP1_in_func_full.nii")
+analysis_types = ["WithinLayer"]
+restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MM1_in-func.nii")
 
 for analysis in analysis_types:
 
@@ -34,7 +34,7 @@ for analysis in analysis_types:
     elif analysis == "WithinLayer":
 
         adj_matrix_within = restStateSub.get_adj_matrix_withinLayers_multRuns()
-        eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(adj_matrix_within, analysis, full=True)
+        eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(adj_matrix_within, analysis, num_components=20)
         restStateSub.plotScree(eigvals_within, analysis)
         crossingsWithin = restStateSub.run_plot_zeroCrossings(adj_matrix_within, eigvecs_within, analysis)
         restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)

@@ -73,6 +73,7 @@ class LaminarRestingState:
 
         sorted_layers = sorted(layer_groups.items())
         adj_matrix_within = np.empty((self.N, self.N, self.num_layers))
+        adj_matrix_within_noThresh = np.empty((self.N,self.N,self.num_layers))
 
         for i, (layer_num, files) in enumerate(sorted_layers):
             print(f"Processing Layer {layer_num} with {len(files)} run(s)")
@@ -89,12 +90,13 @@ class LaminarRestingState:
             # Compute correlation
             corr_matrix = np.corrcoef(concatenated)
             corr_matrix = np.nan_to_num(corr_matrix, nan=0)
-            np.fill_diagonal(corr_matrix, 1)
+            np.fill_diagonal(corr_matrix, 0)
 
             # Threshold
             threshold = np.percentile(np.abs(corr_matrix), self.setThresh)
             adj_matrix = np.where(np.abs(corr_matrix) >= threshold, corr_matrix, 0)
             adj_matrix_within[:, :, i] = np.abs(adj_matrix)
+            adj_matrix_within_noThresh[:,:,i] = self.fisher_z(corr_matrix)
 
         # Build inter-layer identity matrices
         I_N = np.eye(self.N)
@@ -111,7 +113,7 @@ class LaminarRestingState:
 
         adj_matrix_full = np.block(blocks)
         
-        return adj_matrix_full
+        return adj_matrix_full, adj_matrix_within_noThresh
 
 
     def get_adj_matrix_full(self):
@@ -149,8 +151,7 @@ class LaminarRestingState:
             except Exception as e:
                 raise ValueError(f"Could not extract layer number from filename: {file}") from e
 
-        sorted_layers = sorted(layer_groups.items())
-        adj_matrix_within = np.empty((self.N, self.N, self.num_layers))
+        sorted_layers = sorted(layer_groups.items())        
         concatenated_full = []
         for i, (layer_num, files) in enumerate(sorted_layers):
             print(f"Processing Layer {layer_num} with {len(files)} run(s)")
@@ -167,12 +168,12 @@ class LaminarRestingState:
 
         all_series_array = np.concatenate(concatenated_full, axis=0)
         full_corr = np.corrcoef(all_series_array)
-        full_corr = np.nan_to_num(full_corr, nan=0)
-        np.fill_diagonal(full_corr, 1)
+        full_corr = self.fisher_z(np.nan_to_num(full_corr, nan=0))
+        np.fill_diagonal(full_corr, 0)
         threshold = np.percentile(np.abs(full_corr), self.setThresh)
         adj_full = np.where(np.abs(full_corr) >= threshold, full_corr, 0)
         
-        return np.abs(adj_full), all_series_array
+        return np.abs(adj_full), all_series_array, full_corr
 
 
     def get_adj_matrix_singleLayer(self, layerNum):
@@ -200,7 +201,8 @@ class LaminarRestingState:
         if convert_to_binary:
             M[M != 0] = 1 # Convert to binary matrix
         else:
-            pass
+            M = np.nan_to_num(M, nan=0.0, posinf=0.0, neginf=0.0)
+            M[M < 0] = 0.0
 
         plt.figure(figsize=(6, 6))
         plt.imshow(M, cmap="viridis")
@@ -216,11 +218,37 @@ class LaminarRestingState:
         if full:
             eigvals, eigvecs = scipy.linalg.eigh(L_norm)
             self.num_components = len(eigvals)
+            #self.__validate_eigendecomposition__(self, L_norm, eigvals, eigvecs)
+            
         else:
             eigvals, eigvecs = scipy.sparse.linalg.eigsh(L_norm, k=num_components, which='SM')
             self.num_components = num_components
 
+
         return eigvals, eigvecs
+
+
+    def __validate_eigendecomposition__(self, L_norm, eigvals, eigvecs, tol=1e-5):
+        if np.any(np.isnan(eigvals)) or np.any(np.isinf(eigvals)):
+            raise ValueError("Eigenvalues contain NaNs or Infs.")
+        if np.any(np.isnan(eigvecs)) or np.any(np.isinf(eigvecs)):
+            raise ValueError("Eigenvectors contain NaNs or Infs.")
+
+        # Reconstruction residual
+        L_reconstructed = eigvecs @ np.diag(eigvals) @ eigvecs.T
+        residual = np.linalg.norm(L_norm - L_reconstructed, ord='fro')
+        if residual > tol:
+            raise ValueError(f"Reconstruction residual too high: {residual}")
+
+        # Orthogonality check
+        I_approx = eigvecs.T @ eigvecs
+        ortho_residual = np.linalg.norm(I_approx - np.eye(eigvecs.shape[1]), ord='fro')
+        if ortho_residual > tol:
+            raise ValueError(f"Eigenvectors not orthonormal: residual = {ortho_residual}")
+
+        # Value range (specific to normalized Laplacians)
+        if np.min(eigvals) < -tol or np.max(eigvals) > 2 + tol:
+            raise ValueError("Eigenvalues outside [0, 2] range.")
 
     def runKMeans(self, eigvecs, name, num_clusters=3, random_state=99, eigvecs_to_plot=[1, 2]):
 
@@ -336,7 +364,7 @@ class LaminarRestingState:
 
         print("All brain maps saved successfully!")
 
-    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True):
+    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=None):
 
         mmp_labels = hcp.mmp.labels  # mmp = Glasser parcellation
         
@@ -363,13 +391,23 @@ class LaminarRestingState:
         for i in range(Xp.shape[1]):
             layer_data = hcp.cortex_data(hcp.unparcellate(Xp[:, i], hcp.mmp))
 
-            titles = [["Layer 1 Lateral L", "Layer 1 Medial L", "Layer 1 Lateral R",  "Layer 1 Medial R"], 
-                        ["Layer 2 Lateral L", "Layer 2 Medial L", "Layer 2 Lateral R",  "Layer 2 Medial R"],
-                        ["Layer 3 Lateral L", "Layer 3 Medial L", "Layer 3 Lateral R",  "Layer 3 Medial R"]]
+            # titles = [["Layer 1 Lateral L", "Layer 1 Medial L", "Layer 1 Lateral R",  "Layer 1 Medial R"], 
+            #             ["Layer 2 Lateral L", "Layer 2 Medial L", "Layer 2 Lateral R",  "Layer 2 Medial R"],
+            #             ["Layer 3 Lateral L", "Layer 3 Medial L", "Layer 3 Lateral R",  "Layer 3 Medial R"]]
             
+            if titles is not None and i < len(titles):
+                row_title = titles[i]
+            else:
+                row_title = f"Layer {i+1}"
+
+                
             # Loop over the views (columns)
             for j, view in enumerate(orientations):
-                ax = axes[i, j]
+                try:
+                    ax = axes[i, j]
+                except:
+                    ax = axes[j]
+                
                 if j==0 or j==1:
                     plotting.plot_surf_stat_map(
                         hcp.mesh.inflated_left,
@@ -401,7 +439,8 @@ class LaminarRestingState:
                         symmetric_cbar=False,
                     )
 
-                ax.set_title(titles[i][j], fontsize=14)
+                # ax.set_title(titles[i][j], fontsize=14)
+                ax.set_title(f"{row_title} - {orientations[j].capitalize()}", fontsize=14)
 
         # Add a single colorbar
         cbar_ax = fig.add_axes([0.92, 0.2, 0.02, 0.6])  # Positioning of colorbar
@@ -479,7 +518,8 @@ class LaminarRestingState:
 
         n_ROI = U.shape[0]  # Number of regions (nodes)
         wZC = np.zeros(U.shape[1])  # Initialize zero-crossing count array
-        
+        print(n_ROI)
+        print(U.shape[1])
         for u in range(U.shape[1]):  # Loop through each eigenvector
             summ = 0  # Initialize sum            
             for i in range(n_ROI - 1):  # Loop through each connection
@@ -499,3 +539,9 @@ class LaminarRestingState:
         plt.close()
         
         return wZC
+    
+    def fisher_z(self,r):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            z = 0.5 * np.log((1 + r) / (1 - r))
+            z[np.isinf(z)] = 0
+        return z

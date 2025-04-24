@@ -6,11 +6,11 @@ from nilearn import plotting
 
 # Define input and output directories
 studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
-subject = "sub-01"
+subject = "sub-02"
 
-input_dir = f"{studyDataDir}/{subject}/func/derivatives"
-output_dir = f"{studyDataDir}/derivatives/{subject}/func/tsnr"
-figure_dir = f"{studyDataDir}/derivatives/{subject}/func/tsnr"
+input_dir = f"{studyDataDir}/{subject}/func/derivatives/"
+output_dir = f"{studyDataDir}/derivatives/func/tsnr/{subject}"
+figure_dir = f"{studyDataDir}/derivatives/func/tsnr/{subject}"
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -45,6 +45,8 @@ for file in nifti_files:
     tsnr_file = os.path.join(output_dir, f"tsnr_{file}")
     nib.save(tsnr_img, tsnr_file)
 
+    vmin, vmax = np.percentile(tsnr, [0.5, 99.5])  # Robust scaling
+
     # Plot the tSNR overlaid on the mean functional image
     fig, ax = plt.subplots(figsize=(8, 6))
     plotting.plot_stat_map(
@@ -53,6 +55,7 @@ for file in nifti_files:
         title=f"tSNR - {file}",
         display_mode="ortho",
         draw_cross=False,
+        vmin=vmin, vmax=vmax,
         cut_coords=(0, 0, 0),  # Adjust coordinates if needed
         cmap="hot",  # Heatmap-like color map for better visualization
         axes=ax
@@ -60,6 +63,7 @@ for file in nifti_files:
     
     # Save figure
     figure_file = os.path.join(figure_dir, f"tSNR_{file}.png")
+    print(f"Saving figure to {figure_file}")
     plt.savefig(figure_file, dpi=300)
     plt.close()
     
