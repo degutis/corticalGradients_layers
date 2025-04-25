@@ -3,7 +3,7 @@ import os
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
-from nilearn import plotting, image
+from nilearn import plotting
 import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -11,7 +11,9 @@ from sklearn.cluster import KMeans
 import hcp_utils as hcp
 import warnings
 from collections import defaultdict
-import re
+import plotly.graph_objects as go
+import networkx as nx
+
 
 
 
@@ -364,7 +366,9 @@ class LaminarRestingState:
 
         print("All brain maps saved successfully!")
 
-    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=None):
+    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=None, folder_name="eigenvector_layers"):
+
+        os.makedirs(f"{self.data_dir}/{name}/{folder_name}", exist_ok=True)  # Create folder for layer-wise maps
 
         mmp_labels = hcp.mmp.labels  # mmp = Glasser parcellation
         
@@ -448,7 +452,7 @@ class LaminarRestingState:
         fig.colorbar(norm, cax=cbar_ax)
 
         plt.suptitle(f"Eigenvector {eigValue}", fontsize=16)
-        plt.savefig(f"{self.data_dir}/{name}/eigenvector_layers/eigenvectorSurface_{eigValue}_twoHem.png", facecolor="white")
+        plt.savefig(f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png", facecolor="white")
         plt.close()
 
 
@@ -545,3 +549,168 @@ class LaminarRestingState:
             z = 0.5 * np.log((1 + r) / (1 - r))
             z[np.isinf(z)] = 0
         return z
+    
+    def getLabels(self):
+        
+        labels = [
+                'V1_R', 'MST_R', 'V6_R', 'V2_R', 'V3_R', 'V4_R', 'V8_R', '4_R', '3b_R', 'FEF_R',
+                'PEF_R', '55b_R', 'V3A_R', 'RSC_R', 'POS2_R', 'V7_R', 'IPS1_R', 'FFC_R', 'V3B_R', 'LO1_R',
+                'LO2_R', 'PIT_R', 'MT_R', 'A1_R', 'PSL_R', 'SFL_R', 'PCV_R', 'STV_R', '7Pm_R', '7m_R',
+                'POS1_R', '23d_R', 'v23ab_R', 'd23ab_R', '31pv_R', '5m_R', '5mv_R', '23c_R', '5L_R', '24dd_R',
+                '24dv_R', '7AL_R', 'SCEF_R', '6ma_R', '7Am_R', '7Pl_R', '7PC_R', 'LIPv_R', 'VIP_R', 'MIP_R',
+                '1_R', '2_R', '3a_R', '6d_R', '6mp_R', '6v_R', 'p24pr_R', '33pr_R', 'a24pr_R', 'p32pr_R',
+                'a24_R', 'd32_R', '8BM_R', 'p32_R', '10r_R', '47m_R', '8Av_R', '8Ad_R', '9m_R', '8BL_R',
+                '9p_R', '10d_R', '8C_R', '44_R', '45_R', '47l_R', 'a47r_R', '6r_R', 'IFJa_R', 'IFJp_R',
+                'IFSp_R', 'IFSa_R', 'p9-46v_R', '46_R', 'a9-46v_R', '9-46d_R', '9a_R', '10v_R', 'a10p_R', '10pp_R',
+                '11l_R', '13l_R', 'OFC_R', '47s_R', 'LIPd_R', '6a_R', 'i6-8_R', 's6-8_R', '43_R', 'OP4_R',
+                'OP1_R', 'OP2-3_R', '52_R', 'RI_R', 'PFcm_R', 'PoI2_R', 'TA2_R', 'FOP4_R', 'MI_R', 'Pir_R',
+                'AVI_R', 'AAIC_R', 'FOP1_R', 'FOP3_R', 'FOP2_R', 'PFt_R', 'AIP_R', 'EC_R', 'PreS_R', 'H_R',
+                'ProS_R', 'PeEc_R', 'STGa_R', 'PBelt_R', 'A5_R', 'PHA1_R', 'PHA3_R', 'STSda_R', 'STSdp_R', 'STSvp_R',
+                'TGd_R', 'TE1a_R', 'TE1p_R', 'TE2a_R', 'TF_R', 'TE2p_R', 'PHT_R', 'PH_R', 'TPOJ1_R', 'TPOJ2_R',
+                'TPOJ3_R', 'DVT_R', 'PGp_R', 'IP2_R', 'IP1_R', 'IP0_R', 'PFop_R', 'PF_R', 'PFm_R', 'PGi_R',
+                'PGs_R', 'V6A_R', 'VMV1_R', 'VMV3_R', 'PHA2_R', 'V4t_R', 'FST_R', 'V3CD_R', 'LO3_R', 'VMV2_R',
+                '31pd_R', '31a_R', 'VVC_R', '25_R', 's32_R', 'pOFC_R', 'PoI1_R', 'Ig_R', 'FOP5_R', 'p10p_R',
+                'p47r_R', 'TGv_R', 'MBelt_R', 'LBelt_R', 'A4_R', 'STSva_R', 'TE1m_R', 'PI_R', 'a32pr_R', 'p24_R',
+                
+                'V1_L', 'MST_L', 'V6_L', 'V2_L', 'V3_L', 'V4_L', 'V8_L', '4_L', '3b_L', 'FEF_L',
+                'PEF_L', '55b_L', 'V3A_L', 'RSC_L', 'POS2_L', 'V7_L', 'IPS1_L', 'FFC_L', 'V3B_L', 'LO1_L',
+                'LO2_L', 'PIT_L', 'MT_L', 'A1_L', 'PSL_L', 'SFL_L', 'PCV_L', 'STV_L', '7Pm_L', '7m_L',
+                'POS1_L', '23d_L', 'v23ab_L', 'd23ab_L', '31pv_L', '5m_L', '5mv_L', '23c_L', '5L_L', '24dd_L',
+                '24dv_L', '7AL_L', 'SCEF_L', '6ma_L', '7Am_L', '7Pl_L', '7PC_L', 'LIPv_L', 'VIP_L', 'MIP_L',
+                '1_L', '2_L', '3a_L', '6d_L', '6mp_L', '6v_L', 'p24pr_L', '33pr_L', 'a24pr_L', 'p32pr_L',
+                'a24_L', 'd32_L', '8BM_L', 'p32_L', '10r_L', '47m_L', '8Av_L', '8Ad_L', '9m_L', '8BL_L',
+                '9p_L', '10d_L', '8C_L', '44_L', '45_L', '47l_L', 'a47r_L', '6r_L', 'IFJa_L', 'IFJp_L',
+                'IFSp_L', 'IFSa_L', 'p9-46v_L', '46_L', 'a9-46v_L', '9-46d_L', '9a_L', '10v_L', 'a10p_L', '10pp_L',
+                '11l_L', '13l_L', 'OFC_L', '47s_L', 'LIPd_L', '6a_L', 'i6-8_L', 's6-8_L', '43_L', 'OP4_L',
+                'OP1_L', 'OP2-3_L', '52_L', 'RI_L', 'PFcm_L', 'PoI2_L', 'TA2_L', 'FOP4_L', 'MI_L', 'Pir_L',
+                'AVI_L', 'AAIC_L', 'FOP1_L', 'FOP3_L', 'FOP2_L', 'PFt_L', 'AIP_L', 'EC_L', 'PreS_L', 'H_L',
+                'ProS_L', 'PeEc_L', 'STGa_L', 'PBelt_L', 'A5_L', 'PHA1_L', 'PHA3_L', 'STSda_L', 'STSdp_L', 'STSvp_L',
+                'TGd_L', 'TE1a_L', 'TE1p_L', 'TE2a_L', 'TF_L', 'TE2p_L', 'PHT_L', 'PH_L', 'TPOJ1_L', 'TPOJ2_L',
+                'TPOJ3_L', 'DVT_L', 'PGp_L', 'IP2_L', 'IP1_L', 'IP0_L', 'PFop_L', 'PF_L', 'PFm_L', 'PGi_L',
+                'PGs_L', 'V6A_L', 'VMV1_L', 'VMV3_L', 'PHA2_L', 'V4t_L', 'FST_L', 'V3CD_L', 'LO3_L', 'VMV2_L',
+                '31pd_L', '31a_L', 'VVC_L', '25_L', 's32_L', 'pOFC_L', 'PoI1_L', 'Ig_L', 'FOP5_L', 'p10p_L',
+                'p47r_L', 'TGv_L', 'MBelt_L', 'LBelt_L', 'A4_L', 'STSva_L', 'TE1m_L', 'PI_L', 'a32pr_L', 'p24_L'
+            ]
+        
+        return labels
+
+
+    def plotConnectogram(self, connectivity_matrix, name, layer, color="red", n=360, percent=20):
+
+        os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
+
+        labels = self.getLabels()
+
+        # Create a graph just to use the circular layout
+        G = nx.Graph()
+        G.add_nodes_from(range(n))
+        pos = nx.circular_layout(G)
+
+        # Assign edges per layer
+        edges = self.get_top_percent_edges(connectivity_matrix, percent=percent)
+
+        # Initialize plot
+        fig = go.Figure()
+
+        # Add layers
+        self.plot_edges(fig, edges, pos, color=color, name=layer)
+
+        # Add nodes
+        for node, (x, y) in pos.items():
+            fig.add_trace(go.Scatter(
+                x=[x], y=[y],
+                text=labels[node],
+                mode='markers+text',
+                textposition='top center',
+                marker=dict(size=4, color='gray'),
+                showlegend=False
+            ))
+
+        # Final layout
+        fig.update_layout(
+            showlegend=True,
+            title="Multi-layer Connectogram",
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        fig.write_image(f"{self.data_dir}/{name}/Connectogram/Crossings_{layer}.png")
+
+    
+    def plotConnectogram_allInOne(self, layer1, layer2, layer3, name, percent=20, n=360):
+
+        os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
+
+        labels = self.getLabels()
+
+        # Create a graph just to use the circular layout
+        G = nx.Graph()
+        G.add_nodes_from(range(n))
+        pos = nx.circular_layout(G)
+
+        # Assign edges per layer
+        edges1 = self.get_top_percent_edges(layer1, percent=percent)
+        edges2 = self.get_top_percent_edges(layer2, percent=percent)
+        edges3 = self.get_top_percent_edges(layer3, percent=percent)
+
+        # Initialize plot
+        fig = go.Figure()
+
+        # Add layers
+        self.plot_edges(fig, edges1, pos, 'red', 'Superficial')
+        self.plot_edges(fig, edges2, pos, 'green', 'Middle')
+        self.plot_edges(fig, edges3, pos, 'blue', 'Deep')
+
+        # Add nodes
+        for node, (x, y) in pos.items():
+            fig.add_trace(go.Scatter(
+                x=[x], y=[y],
+                text=labels[node],
+                mode='markers+text',
+                textposition='top center',
+                marker=dict(size=4, color='gray'),
+                showlegend=False
+            ))
+
+        # Final layout
+        fig.update_layout(
+            showlegend=True,
+            title="Multi-layer Connectogram",
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        
+        fig.write_image(f"{self.data_dir}/{name}/Connectogram/Crossings_All.png")
+
+    def plot_edges(self,fig, edges, pos, color, name):
+        edge_x, edge_y = [], []
+        for u, v in edges:
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+        fig.add_trace(go.Scatter(
+            x=edge_x, y=edge_y,
+            line=dict(width=0.1, color=color),
+            mode='lines',
+            name=name,
+            hoverinfo='none'
+        ))
+
+    def get_top_percent_edges(self, mat, percent=20):
+
+        assert 0 < percent <= 100, "Percent must be between 0 and 100."
+
+        # Get upper triangle values (excluding diagonal)
+        triu_indices = np.triu_indices_from(mat, k=1)
+        edge_weights = mat[triu_indices]
+
+        # Compute threshold for top `percent` strongest connections
+        num_edges = len(edge_weights)
+        k = int(np.ceil(num_edges * percent / 100.0))
+        if k == 0:
+            return []
+
+        # Get indices of top-k weights
+        top_k_indices = np.argpartition(edge_weights, -k)[-k:]
+
+        # Map back to matrix indices
+        edges = [(triu_indices[0][i], triu_indices[1][i]) for i in top_k_indices]
+        return edges
