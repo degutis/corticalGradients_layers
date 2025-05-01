@@ -8,22 +8,23 @@ from collections import defaultdict
 import laminarAnalyses as laman
 
 N = 360
-setThresh = 0
+setThresh = 90
 num_layers=3
-binarize = False
+binarize = True
+subtractAverage = True
 hcplabels = True
 
 data_dirs = ['../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs', '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs']
-output_dir = '../highRes_resting/derivatives/correlations/combo/NoThresh'
+output_dir = '../highRes_resting/derivatives/correlations/combo/NoThresh_largerSupDeep'
 os.makedirs(output_dir, exist_ok=True)
 
 analysis = "WithinLayer"
 
-cluster_threshold = 0.45
-eigenvalue_threshold = 0.85
+cluster_threshold = 0.3
+eigenvalue_threshold = 0.7
 
 row_idx, col_idx = 2,3
-layerComparisons = [(1,1), (2,2), (3,3)]
+layerComparisons = [(1,1), (1,3), (3,2)]
 
 if analysis=="WithinLayer":
 
@@ -31,11 +32,18 @@ if analysis=="WithinLayer":
 
     for data_dir in data_dirs:
         restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+        # restStateSub.plotReliability() # Run this once per subject
         adj_matrix_within, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
         adj_matrices.append(adj_matrix_within_corr)
 
     adj_matrices_4d = np.stack(adj_matrices, axis=3)
     mean_adj_matrix = np.mean(adj_matrices_4d, axis=3)
+
+    if subtractAverage:
+        avg_matrix = np.mean(mean_adj_matrix, axis=2)
+        for i in range(mean_adj_matrix.shape[2]):
+            mean_adj_matrix[:, :, i] -= avg_matrix
+        mean_adj_matrix = np.where(mean_adj_matrix >= 0, mean_adj_matrix, 0)
 
     if binarize:
         adjMatrix = np.empty((N,N,num_layers))
@@ -44,8 +52,10 @@ if analysis=="WithinLayer":
             threshold = np.percentile(np.abs(currentLayer), setThresh)
             adj_matrix = np.where(np.abs(currentLayer) >= threshold, currentLayer, 0)
             adjMatrix[:,:,layer] = np.abs(adj_matrix)
+            adjMatrix[adjMatrix != 0] = 1
     else:
-        adjMatrix = mean_adj_matrix
+        adjMatrix = np.abs(mean_adj_matrix)
+
 
     I_N = np.eye(N)
     M = np.block([
@@ -56,20 +66,26 @@ if analysis=="WithinLayer":
 
     restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
 
-    restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
-    restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
-    restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
-    restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
+    # restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
 
-    # eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, convert_to_binary=False, full=False)
+    # rich_nodes1 = restStateSub.calculateRichClub(adjMatrix[:,:,0], analysis, "Deep")
+    # rich_nodes2 = restStateSub.calculateRichClub(adjMatrix[:,:,1], analysis, "Middle")
+    # rich_nodes3 = restStateSub.calculateRichClub(adjMatrix[:,:,2], analysis, "Sup")
+    # restStateSub.plotRichClub(rich_nodes1, rich_nodes2, rich_nodes3, analysis)
+
+    eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, num_components=40, convert_to_binary=False, full=True, vMax=0.1)
+    restStateSub.run_plot_FstatComp(eigvecs_within,analysis)
     # eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_within, eigvals_within, N, num_layers)
     # cluster_groups, labels = laman.runClusterAnalysis(eigvecs_list, threshold=cluster_threshold)
     # laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
 
-    #restStateSub.plotScree(eigvals_within, analysis)
-    #crossingsWithin = restStateSub.run_plot_zeroCrossings(M, eigvecs_within, analysis)
-    #restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)
-    #restStateSub.plotTwoDimEmbedding(eigvecs_within, analysis)
+    restStateSub.plotScree(eigvals_within, analysis)
+    # crossingsWithin = restStateSub.run_plot_zeroCrossings(M, eigvecs_within, analysis)
+    # restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)
+    # restStateSub.plotTwoDimEmbedding(eigvecs_within, analysis)
 
 
 elif analysis=="FullLayer":
@@ -98,10 +114,10 @@ elif analysis=="FullLayer":
     laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
 
     
-    # restStateSub.plotScree(eigvals_full, analysis)
-    # crossingsFull = restStateSub.run_plot_zeroCrossings(M, eigvecs_full, analysis)
-    # restStateSub.eigvecs_to_nifti(eigvecs_full, analysis, hcp_atlas=hcplabels)
-    # restStateSub.plotTwoDimEmbedding(eigvecs_full, analysis)
+    restStateSub.plotScree(eigvals_full, analysis)
+    crossingsFull = restStateSub.run_plot_zeroCrossings(M, eigvecs_full, analysis)
+    restStateSub.eigvecs_to_nifti(eigvecs_full, analysis, hcp_atlas=hcplabels)
+    restStateSub.plotTwoDimEmbedding(eigvecs_full, analysis)
 
 elif analysis=="SingleLayer":
 
@@ -176,7 +192,7 @@ elif analysis=="SingleLayerComparison":
                                                atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
         
         eigvals_full, eigvecs_full = restStateSub.runLaplacianEmbedding(M_single, analysis, num_components=20, 
-                                                                        convert_to_binary=False, full=True)
+                                                                        convert_to_binary=False, full=True, addName=f"_{lc[0]}_{lc[1]}")
         for i in range(eigvecs_full.shape[1]):
             eigvec = eigvecs_full[:, i]
             eigvecs_list.append(eigvec/np.linalg.norm(eigvec))

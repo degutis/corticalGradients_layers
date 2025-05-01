@@ -13,6 +13,11 @@ import warnings
 from collections import defaultdict
 import plotly.graph_objects as go
 import networkx as nx
+from scipy.signal import resample
+from tqdm import tqdm
+from scipy.stats import f_oneway
+
+
 
 
 
@@ -29,6 +34,258 @@ class LaminarRestingState:
         self.npy_files = [f for f in os.listdir(data_dir) if f.endswith(".npy")]
         self.npy_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".npy")])
 
+    # def plotReliability(self, TR=3.2, reference_minutes=7, min_test_minutes=2, n_iterations=500):
+    #     """
+    #     Computes within‐subject reliability (Laumann‐style) of resting‐state FC
+    #     as a function of total scan length, separately for each gray‐matter layer.
+    #     """
+    #     # volumes per minute, rounded to nearest integer
+    #     volumes_per_minute = int(round(60.0 / TR))
+
+    #     # Gather .npy files
+    #     npy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
+    #     layer_groups = defaultdict(list)
+
+    #     for fname in npy_files:
+    #         try:
+    #             layer_str = fname.split('_')[-1].replace('.npy', '')
+    #             layer_num = int(layer_str)
+    #         except Exception as e:
+    #             raise ValueError(f"Could not extract layer number from filename: {fname}") from e
+    #         layer_groups[layer_num].append(os.path.join(self.data_dir, fname))
+
+    #     reliability_results = {}
+
+    #     for layer_num in sorted(layer_groups):
+    #         files = layer_groups[layer_num]
+    #         print(f"\nProcessing Layer {layer_num} with {len(files)} run(s)")
+
+    #         # Load and concatenate
+    #         runs = [np.load(fp) for fp in files]  # each: [n_voxels, n_timepoints]
+    #         data = np.concatenate(runs, axis=1)    # [n_voxels, total_timepoints]
+    #         n_parcels, total_volumes = data.shape
+    #         total_minutes = total_volumes // volumes_per_minute
+
+    #         print(f"  total_volumes = {total_volumes}, total_minutes = {total_minutes}")
+
+    #         # if too short, skip
+    #         if total_minutes <= reference_minutes + min_test_minutes - 1:
+    #             print(f"  Skipping layer {layer_num}: not enough data for reference={reference_minutes} and test>= {min_test_minutes} minutes.")
+    #             continue
+
+    #         test_minutes = range(min_test_minutes, total_minutes - reference_minutes + 1)
+    #         layer_curve = []
+
+    #         # pre‐compute upper‐tri indices for speed
+    #         iu = np.triu_indices(n_parcels, k=1)
+
+    #         for tmin in tqdm(test_minutes, desc=f"Layer {layer_num}"):
+    #             test_vols = tmin * volumes_per_minute
+    #             ref_vols  = reference_minutes * volumes_per_minute
+    #             corrs = []
+
+    #             for _ in range(n_iterations):
+    #                 # --- reference segment ---
+    #                 start_ref = np.random.randint(0, total_volumes - ref_vols + 1)
+    #                 ref_seg = data[:, start_ref : start_ref + ref_vols]
+
+    #                 # --- test segment ---
+    #                 start_test = np.random.randint(0, total_volumes - test_vols + 1)
+    #                 test_seg = data[:, start_test : start_test + test_vols]
+
+    #                 # if lengths mismatch, up/downsample test → ref length
+    #                 if test_seg.shape[1] != ref_seg.shape[1]:
+    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+
+    #                 # compute FC matrices [n_parcels×n_parcels]
+    #                 ref_fc  = np.corrcoef(ref_seg)
+    #                 test_fc = np.corrcoef(test_seg)
+
+    #                 # flatten upper‐triangle
+    #                 ref_vals  = ref_fc[iu]
+    #                 test_vals = test_fc[iu]
+
+    #                 # mask out NaNs
+    #                 valid = ~np.isnan(ref_vals) & ~np.isnan(test_vals)
+    #                 if valid.sum() > 1:  # need at least two valid points
+    #                     r = np.corrcoef(ref_vals[valid], test_vals[valid])[0, 1]
+    #                     corrs.append(r)
+
+    #             mean_r = np.nanmean(corrs)
+    #             layer_curve.append((tmin, mean_r))
+
+    #         reliability_results[layer_num] = layer_curve
+
+    #     # plot
+    #     plt.figure(figsize=(10, 6))
+    #     for layer_num, curve in sorted(reliability_results.items()):
+    #         minutes, rs = zip(*curve)
+    #         plt.plot(minutes, rs, marker='o', label=f'Layer {layer_num}')
+
+    #     plt.xlabel('Randomly sampled minutes (test window)')
+    #     plt.ylabel(f'Mean correlation (ref={reference_minutes} min)')
+    #     plt.title('Within-subject reliability vs. time per layer')
+    #     plt.grid(True)
+    #     plt.legend()
+    #     plt.tight_layout()
+    #     outpath = os.path.join(self.data_dir, 'Reliability.png')
+    #     plt.savefig(outpath)  
+      
+    def plotReliability(self, TR=3.2, reference_minutes=4, min_test_minutes=2, n_iterations=500):
+        """
+        Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers.
+        """
+        # how many volumes in one minute
+        volumes_per_minute = int(round(60.0 / TR))
+
+        # --- 1) collect layer‐grouped file lists ---
+        npy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
+        layer_groups = defaultdict(list)
+        for fname in npy_files:
+            try:
+                layer_num = int(fname.split('_')[-1].replace('.npy',''))
+            except Exception as e:
+                raise ValueError(f"Could not extract layer number from filename: {fname}") from e
+            layer_groups[layer_num].append(os.path.join(self.data_dir, fname))
+
+        reliability_results = {}
+
+        # --- 2) per‐layer curves (as before) ---
+        for layer_num in sorted(layer_groups):
+            files = layer_groups[layer_num]
+            print(f"\nLayer {layer_num}: {len(files)} run(s)")
+
+            # load+concat runs → data: [360 parcels, total_timepoints]
+            runs = [np.load(fp) for fp in files]
+            data = np.concatenate(runs, axis=1)
+            n_parcels, total_vols = data.shape
+            total_mins = total_vols // volumes_per_minute
+            print(f"  total_vols={total_vols}, total_mins={total_mins}")
+
+            if total_mins < reference_minutes + min_test_minutes:
+                print(f"  skip (need ≥{reference_minutes+min_test_minutes} min)")
+                continue
+
+            # pre‐compute FC upper‐triangle indices
+            iu = np.triu_indices(n_parcels, k=1)
+            layer_curve = []
+
+            for tmin in tqdm(range(min_test_minutes, total_mins - reference_minutes +1),
+                            desc=f"Layer {layer_num}"):
+                test_vols = tmin * volumes_per_minute
+                ref_vols  = reference_minutes * volumes_per_minute
+                corrs = []
+
+                for _ in range(n_iterations):
+                    # sample reference segment
+                    sr = np.random.randint(0, total_vols - ref_vols +1)
+                    ref_seg = data[:, sr:sr+ref_vols]
+                    # sample test segment
+                    st = np.random.randint(0, total_vols - test_vols +1)
+                    test_seg = data[:, st:st+test_vols]
+
+                    # resample if lengths differ
+                    if test_seg.shape[1] != ref_seg.shape[1]:
+                        test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+
+                    # compute FCs and flatten
+                    ref_fc  = np.corrcoef(ref_seg)
+                    test_fc = np.corrcoef(test_seg)
+                    rvals = ref_fc[iu]
+                    tvals = test_fc[iu]
+
+                    # drop NaNs
+                    valid = ~np.isnan(rvals)&~np.isnan(tvals)
+                    if valid.sum() < 2:
+                        continue
+
+                    # corr of the two FC‐vectors
+                    r = np.corrcoef(rvals[valid], tvals[valid])[0,1]
+                    corrs.append(r)
+
+                layer_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
+
+            reliability_results[layer_num] = layer_curve
+
+        # --- 3) ALL‐layers curve ---
+        # group by run‐ID so that within‐run time‐axes align
+        run_groups = defaultdict(list)
+        for files in layer_groups.values():
+            for fp in files:
+                run_id = os.path.basename(fp).split('_')[1]   # e.g. 'run2'
+                run_groups[run_id].append(fp)
+
+        data_runs = []
+        for run_id, fps in run_groups.items():
+            # sort layers by layer‐number to keep row‐order consistent
+            fps_sorted = sorted(fps, key=lambda x: int(os.path.basename(x).split('_')[-1].replace('.npy','')))
+            arrs = [np.load(fp) for fp in fps_sorted]
+            # check all have same timepoints
+            T0 = arrs[0].shape[1]
+            if any(a.shape[1]!=T0 for a in arrs):
+                raise ValueError(f"Run {run_id} has mismatched timepoints across layers")
+            # stack parcels from every layer → shape [360 × n_layers, T0]
+            data_runs.append(np.vstack(arrs))
+
+        # now concat across runs → data_all [360 × n_layers, total_vols_all]
+        data_all = np.concatenate(data_runs, axis=1)
+        n_all, total_vols_all = data_all.shape
+        total_mins_all = total_vols_all // volumes_per_minute
+        print(f"\nALL‐LAYERS: parcels={n_all}, total_vols={total_vols_all}, total_mins={total_mins_all}")
+
+        if total_mins_all >= reference_minutes + min_test_minutes:
+            iu_all = np.triu_indices(n_all, k=1)
+            all_curve = []
+
+            for tmin in tqdm(range(min_test_minutes, total_mins_all - reference_minutes +1),
+                            desc="ALL‐LAYERS"):
+                test_vols = tmin * volumes_per_minute
+                ref_vols  = reference_minutes * volumes_per_minute
+                corrs = []
+
+                for _ in range(n_iterations):
+                    # sample segments
+                    sr = np.random.randint(0, total_vols_all - ref_vols +1)
+                    ref_seg = data_all[:, sr:sr+ref_vols]
+                    st = np.random.randint(0, total_vols_all - test_vols +1)
+                    test_seg = data_all[:, st:st+test_vols]
+
+                    if test_seg.shape[1] != ref_seg.shape[1]:
+                        test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+
+                    ref_fc  = np.corrcoef(ref_seg)
+                    test_fc = np.corrcoef(test_seg)
+                    rv, tv = ref_fc[iu_all], test_fc[iu_all]
+                    valid = ~np.isnan(rv)&~np.isnan(tv)
+                    if valid.sum() < 2:
+                        continue
+                    r = np.corrcoef(rv[valid], tv[valid])[0,1]
+                    corrs.append(r)
+
+                all_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
+
+            reliability_results['all'] = all_curve
+        else:
+            print("Not enough data to compute ALL‐LAYERS curve.")
+
+        # --- 4) Plot everything ---
+        plt.figure(figsize=(10,6))
+        for key, curve in sorted(reliability_results.items(), key=lambda x: str(x[0])):
+            mins, rs = zip(*curve)
+            label = 'All layers' if key=='all' else f'Layer {key}'
+            plt.plot(mins, rs, marker='o', label=label)
+
+        plt.xlabel('Test window length (minutes)')
+        plt.ylabel(f'Mean FC‐matrix corr (ref={reference_minutes} min)')
+        plt.title('Within‐subject FC reliability vs. time')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+
+        outpath = os.path.join(self.data_dir, 'Reliability_FC_all.png')
+        plt.savefig(outpath, bbox_inches='tight')
+        plt.close()
+        print(f"Saved combined plot to {outpath}")
 
     def get_adj_matrix_withinLayers(self):
         
@@ -60,7 +317,7 @@ class LaminarRestingState:
 
         return adj_matrix_full
     
-    def get_adj_matrix_withinLayers_multRuns(self):
+    def get_adj_matrix_withinLayers_multRuns(self, subtractAverage=False):
         
         layer_groups = defaultdict(list)
         
@@ -99,6 +356,13 @@ class LaminarRestingState:
             adj_matrix = np.where(np.abs(corr_matrix) >= threshold, corr_matrix, 0)
             adj_matrix_within[:, :, i] = np.abs(adj_matrix)
             adj_matrix_within_noThresh[:,:,i] = self.fisher_z(corr_matrix)
+
+        # 
+        if subtractAverage:
+            avg_matrix = np.mean(adj_matrix_within_noThresh, axis=2)
+            for i in range(self.num_layers):
+                adj_matrix_within_noThresh[:, :, i] -= avg_matrix
+
 
         # Build inter-layer identity matrices
         I_N = np.eye(self.N)
@@ -195,9 +459,10 @@ class LaminarRestingState:
         return np.abs(adj_matrix)
 
 
-    def runLaplacianEmbedding(self, M, name, num_components=10, epsilon = 1e-10, convert_to_binary=True, full=False):
+    def runLaplacianEmbedding(self, M, name, num_components=10, epsilon = 1e-10, convert_to_binary=True, full=False, addName='', vMax=0.4):
         
         self.num_components = num_components
+        self.addName = addName
         os.makedirs(f"{self.data_dir}/{name}", exist_ok=True)  # Create folder for layer-wise maps
 
         if convert_to_binary:
@@ -207,10 +472,11 @@ class LaminarRestingState:
             M[M < 0] = 0.0
 
         plt.figure(figsize=(6, 6))
-        plt.imshow(M, cmap="viridis")
+        plt.imshow(M, cmap="viridis", vmin=0, vmax=vMax)
         plt.colorbar(label="Correlation")
         plt.title(f"{name} Block Matrix")
-        plt.savefig(f"{self.data_dir}/{name}/Block_matrix.png", bbox_inches="tight")
+        plt.savefig(f"{self.data_dir}/{name}/Block_matrix{self.addName}.png", bbox_inches="tight")
+        plt.close()
 
         degree_matrix = np.diag(np.sum(M, axis=1))  # Degree matrix
         laplacian_matrix = degree_matrix - M  # Unnormalized Laplacian
@@ -315,10 +581,10 @@ class LaminarRestingState:
 
         total_regions = eigvecs.shape[0]  # Total number of nodes
         num_components = eigvecs.shape[1] # Number of eigenvectors
-        threshold = 40  
+        threshold = 80  
 
         if num_components > threshold:
-            indices = list(range(20)) + list(range(num_components - 20, num_components))
+            indices = list(range(60)) + list(range(num_components - 20, num_components))
         else:
             indices = list(range(num_components))
 
@@ -335,7 +601,7 @@ class LaminarRestingState:
             print(i)
             if force_run or not os.path.exists(f"{self.data_dir}/{name}/eigenvector_layers"):
 
-                os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers", exist_ok=True)  # Create folder for layer-wise maps
+                os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers{self.addName}", exist_ok=True)  # Create folder for layer-wise maps
                 layer_imgs = []
 
                 for layer_idx, layer_data in enumerate(eig_layers):  
@@ -599,7 +865,7 @@ class LaminarRestingState:
 
         os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
 
-        labels = self.getLabels()
+        labels = hcp.mmp.labels #self.getLabels()
 
         # Create a graph just to use the circular layout
         G = nx.Graph()
@@ -622,12 +888,14 @@ class LaminarRestingState:
                 text=labels[node],
                 mode='markers+text',
                 textposition='top center',
-                marker=dict(size=4, color='gray'),
+                textfont=dict(size=8),  
+                marker=dict(size=1, color='gray'),
                 showlegend=False
             ))
 
-        # Final layout
         fig.update_layout(
+            width=1200, 
+            height=1200,
             showlegend=True,
             title="Multi-layer Connectogram",
             margin=dict(l=0, r=0, t=40, b=0)
@@ -639,7 +907,7 @@ class LaminarRestingState:
 
         os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
 
-        labels = self.getLabels()
+        labels = hcp.mmp.labels #self.getLabels()
 
         # Create a graph just to use the circular layout
         G = nx.Graph()
@@ -666,12 +934,15 @@ class LaminarRestingState:
                 text=labels[node],
                 mode='markers+text',
                 textposition='top center',
-                marker=dict(size=4, color='gray'),
+                textfont=dict(size=8),  
+                marker=dict(size=1, color='gray'),
                 showlegend=False
             ))
 
         # Final layout
         fig.update_layout(
+            width=1200, 
+            height=1200,
             showlegend=True,
             title="Multi-layer Connectogram",
             margin=dict(l=0, r=0, t=40, b=0)
@@ -714,3 +985,168 @@ class LaminarRestingState:
         # Map back to matrix indices
         edges = [(triu_indices[0][i], triu_indices[1][i]) for i in top_k_indices]
         return edges
+
+    def calculateRichClub(self, connectivity_matrix, name, layer, threshold=95):
+
+        os.makedirs(f"{self.data_dir}/{name}/NetworkMeasures", exist_ok=True)  # Create folder for layer-wise maps
+
+        threshold = np.percentile(np.abs(connectivity_matrix), threshold)
+        abs_corr_thresh = np.where(np.abs(connectivity_matrix) >= threshold, np.abs(connectivity_matrix), 0)
+        
+        G = nx.from_numpy_array(abs_corr_thresh)
+
+        rich_club_coeffs = nx.rich_club_coefficient(G, normalized=False, seed=33)
+
+        plt.plot(list(rich_club_coeffs.keys()), list(rich_club_coeffs.values()))
+        plt.xlabel('Degree k')
+        plt.ylabel('Rich Club Coefficient φ(k)')
+        plt.title('Rich Club Coefficient Curve (Weighted)')
+        plt.grid(True)
+        plt.savefig(f"{self.data_dir}/{name}/NetworkMeasures/RichClub_{layer}.png", bbox_inches="tight")
+        plt.close()
+
+        # Optional: Identify high-degree nodes (e.g., top 5%) as potential rich club members
+        degrees = dict(G.degree())
+        cutoff = np.percentile(list(degrees.values()), 95)
+        rich_club_nodes = [n for n, deg in degrees.items() if deg >= cutoff]
+
+        # Save to a text file
+        with open(f"{self.data_dir}/{name}/NetworkMeasures/RichClubNodes_{layer}.txt", 'w') as f:
+            for node in rich_club_nodes:
+                f.write(f"{node}\n")
+
+        return rich_club_nodes
+
+    def plotRichClub(self, layer1, layer2, layer3, name, n=360):
+
+        rich_club_node_lists = [layer1, layer2, layer3]
+        Xp = np.zeros((n, 3))
+
+        for i, rc_nodes in enumerate(rich_club_node_lists):
+            Xp[rc_nodes, i] = 1
+
+        self.__plot_on_mmhcp_surface_multipleLayers__(
+            Xp, f"Rich", name, folder_name="NetworkMeasures"
+        )
+
+    def run_plot_FstatComp(self, eigvecs, name, thresh=2.5, target=1.0, k=10):
+        n_rows, n_cols = eigvecs.shape
+        if n_rows != 1080:
+            raise ValueError(f"Expected 1080 rows; got {n_rows}")
+
+        avg_corrs  = np.empty(n_cols)
+        dissimilar = np.empty(n_cols)
+
+        for i in range(n_cols):
+            col = eigvecs[:, i]
+
+            segs = [col[j*360:(j+1)*360] for j in range(3)]
+
+            # pairwise Pearson
+            r01 = np.corrcoef(segs[0], segs[1])[0, 1]
+            r02 = np.corrcoef(segs[0], segs[2])[0, 1]
+            r12 = np.corrcoef(segs[1], segs[2])[0, 1]
+
+            zs = np.arctanh([r01, r02, r12])
+            z_bar = zs.mean()
+            r_bar = np.tanh(z_bar)
+            avg_corrs[i] = r_bar
+            dissimilar[i] = 1 - r_bar
+
+
+        # mu   = dissimilar.mean()
+        # sigma = dissimilar.std(ddof=0)
+        # z    = (dissimilar - mu) / sigma
+        
+        # out_low  = np.where(z < -thresh)[0]
+        # out_high = np.where(z >  thresh)[0]
+
+        outliers, diffs, neigh_mean = self.detect_local_outliers(dissimilar, k_neighbors=2, method='zscore')
+
+        x = np.arange(1, len(avg_corrs) + 1)
+
+        fig, ax1 = plt.subplots()
+
+        ax1.plot(x, dissimilar, marker='o', label='Avg Pearson r')
+
+        ax1.set_xlabel('Eigenvector Number')
+        ax1.set_ylabel('Average Dissimilarity (1-r)')
+        fig.suptitle('Difference Metrics per Eigenvector')
+        fig.tight_layout()
+        fig.savefig(f"{self.data_dir}/{name}/DifferenceInEigvecs.png", bbox_inches="tight")
+        plt.close()
+
+        # diffs = np.abs(dissimilar - target)
+        # closest_idxs = np.argsort(diffs)[:k]
+            
+        with open(f"{self.data_dir}/{name}/OutlierEigenvecs.txt", 'w') as f:
+            # f.write(f"Z-score outliers (threshold = ±{thresh}σ)\n\n")
+            # f.write("Low outliers (z < -{0}):\n".format(thresh))
+            # for idx in out_low:
+            #     f.write(f"{idx}\t{dissimilar[idx]:.6f}\n")
+            # f.write("\nHigh outliers (z > {0}):\n".format(thresh))
+            # for idx in out_high:
+            #     f.write(f"{idx}\t{dissimilar[idx]:.6f}\n")
+            # f.write("\nOrthogonal (k = {0}):\n".format(k))
+            # for idx in closest_idxs:
+            #     f.write(f"{idx}\t{dissimilar[idx]:.6f}\n")
+            if len(outliers) == 0:
+                f.write("No outliers detected.\n")
+                return
+            f.write("Index\tValue\tNeighborMean\tDiff\n")
+            for i in outliers:
+                f.write(f"{i+1}\t{dissimilar[i]:.6f}\t{neigh_mean[i]:.6f}\t{diffs[i]:.6f}\n")
+
+
+    def detect_local_outliers(self,
+                            vals: np.ndarray,
+                            k_neighbors: int = 1,
+                            method: str = 'zscore',
+                            thresh: float = 2.0):
+        """
+        Identify indices i where vals[i] deviates from the average of its
+        k_neighbors on each side by more than thresh (either in SD units or
+        absolute units).
+        
+        Parameters
+        ----------
+        vals        : 1D array of length N (e.g. your dissimilarity vector)
+        k_neighbors : how many neighbors to include on each side (default 1)
+        method      : 'zscore' to threshold on z = (diff - μ)/σ,
+                    'abs'    to threshold on |diff|
+        thresh      : threshold in SDs (if method='zscore') or in units (if 'abs')
+        
+        Returns
+        -------
+        outlier_idxs : 1D array of indices in vals flagged as local outliers
+        diffs        : 1D array of length N of vals[i] - mean(neighbors)
+        neigh_mean   : 1D array of length N of the neighbor means
+        """
+        N = len(vals)
+        diffs = np.empty(N, dtype=float)
+        neigh_mean = np.empty(N, dtype=float)
+
+        for i in range(N):
+            lo = max(0, i - k_neighbors)
+            hi = min(N, i + k_neighbors + 1)
+            # all indices in [lo, hi) except i itself
+            nbrs = [j for j in range(lo, hi) if j != i]
+            if not nbrs:
+                # if N=1, we can’t compare—set diff=0
+                neigh_mean[i] = 0.0
+                diffs[i] = 0.0
+            else:
+                m = vals[nbrs].mean()
+                neigh_mean[i] = m
+                diffs[i] = vals[i] - m
+
+        if method == 'zscore':
+            mu, sigma = diffs.mean(), diffs.std(ddof=0)
+            z = (diffs - mu) / sigma
+            outlier_idxs = np.where(np.abs(z) > thresh)[0]
+        elif method == 'abs':
+            outlier_idxs = np.where(np.abs(diffs) > thresh)[0]
+        else:
+            raise ValueError("method must be 'zscore' or 'abs'")
+
+        return outlier_idxs, diffs, neigh_mean
