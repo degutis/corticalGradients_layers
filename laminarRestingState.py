@@ -1061,7 +1061,7 @@ class LaminarRestingState:
         # out_low  = np.where(z < -thresh)[0]
         # out_high = np.where(z >  thresh)[0]
 
-        outliers, diffs, neigh_mean = self.detect_local_outliers(dissimilar, k_neighbors=2, method='zscore')
+        outliers, diffs, neigh_mean = self.__detect_local_outliers__(dissimilar, k_neighbors=2, method='zscore')
 
         x = np.arange(1, len(avg_corrs) + 1)
 
@@ -1098,7 +1098,7 @@ class LaminarRestingState:
                 f.write(f"{i+1}\t{dissimilar[i]:.6f}\t{neigh_mean[i]:.6f}\t{diffs[i]:.6f}\n")
 
 
-    def detect_local_outliers(self,
+    def __detect_local_outliers__(self,
                             vals: np.ndarray,
                             k_neighbors: int = 1,
                             method: str = 'zscore',
@@ -1150,3 +1150,6 @@ class LaminarRestingState:
             raise ValueError("method must be 'zscore' or 'abs'")
 
         return outlier_idxs, diffs, neigh_mean
+    
+
+    def 
