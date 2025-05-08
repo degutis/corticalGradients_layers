@@ -1,4 +1,4 @@
-import restingState.laminarRestingState as lrs
+import laminarRestingState as lrs
 
 data_dir = '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs'
 

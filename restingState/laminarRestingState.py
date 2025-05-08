@@ -19,7 +19,7 @@ from collections import Counter
 
 
 class LaminarRestingState:
-    def __init__(self, data_dir, N, setThresh, num_layers = 3, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-01/HCP-MM1_in-func.nii"):
+    def __init__(self, data_dir, N, setThresh, num_layers = 3, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-01/HCP-MM1_in-func.nii"):
         
         self.data_dir = data_dir
         self.N = N
@@ -735,7 +735,7 @@ class LaminarRestingState:
         for layer_idx, layer_img in enumerate(layer_imgs):
             plotting.plot_stat_map(
                 layer_img,
-                bg_img="../highRes_resting/derivatives/ref_anat/sub-01/fs_t1_in-func.nii",
+                bg_img="../../highRes_resting/derivatives/ref_anat/sub-01/fs_t1_in-func.nii",
                 cmap="coolwarm",
                 threshold=None,
                 vmin=vmin, vmax=vmax,

@@ -1,11 +1,7 @@
-import restingState.laminarRestingState as lrs
+import laminarRestingState as lrs
 import numpy as np
 import os
-
-from sklearn.cluster import AgglomerativeClustering
-from collections import defaultdict
-
-import restingState.laminarAnalyses as laman
+import laminarAnalyses as laman
 
 N = 360
 setThresh = 90
@@ -14,8 +10,8 @@ binarize = True
 subtractAverage = True
 hcplabels = True
 
-data_dirs = ['../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs/largeGap', '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs/smallGap', '../highRes_resting/derivatives/correlations/sub-03/Multiple_Runs/smallGap']
-output_dir = '../highRes_resting/derivatives/correlations/combo/NoThresh_smallGap'
+data_dirs = ['../../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs/largeGap', '../../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs/smallGap', '../../highRes_resting/derivatives/correlations/sub-03/Multiple_Runs/smallGap']
+output_dir = '../../highRes_resting/derivatives/correlations/combo/NoThresh_smallGap'
 os.makedirs(output_dir, exist_ok=True)
 
 analysis = "WithinLayer"
@@ -31,7 +27,7 @@ if analysis=="WithinLayer":
     adj_matrices = []
 
     for data_dir in data_dirs:
-        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
         # restStateSub.plotReliability() # Run this once per subject
         adj_matrix_within, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
         adj_matrices.append(adj_matrix_within_corr)
@@ -66,30 +62,30 @@ if analysis=="WithinLayer":
 
     # np.savetxt("fM.csv", M, delimiter=",", fmt="%s")
 
-    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
 
-    restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
-    restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
-    restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
-    restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
+    # restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
+    # restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
 
-    rich_nodes1 = restStateSub.calculateRichClub(adjMatrix[:,:,0], analysis, "Deep")
-    rich_nodes2 = restStateSub.calculateRichClub(adjMatrix[:,:,1], analysis, "Middle")
-    rich_nodes3 = restStateSub.calculateRichClub(adjMatrix[:,:,2], analysis, "Sup")
-    restStateSub.plotRichClub(rich_nodes1, rich_nodes2, rich_nodes3, analysis)
+    # rich_nodes1 = restStateSub.calculateRichClub(adjMatrix[:,:,0], analysis, "Deep")
+    # rich_nodes2 = restStateSub.calculateRichClub(adjMatrix[:,:,1], analysis, "Middle")
+    # rich_nodes3 = restStateSub.calculateRichClub(adjMatrix[:,:,2], analysis, "Sup")
+    # restStateSub.plotRichClub(rich_nodes1, rich_nodes2, rich_nodes3, analysis)
 
     eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, num_components=40, convert_to_binary=False, full=True, vMax=0.1)
-    restStateSub.run_plot_FstatComp(eigvecs_within,analysis)
-    eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_within, eigvals_within, N, num_layers)
-    cluster_groups, labels = laman.runClusterAnalysis(eigvecs_list, threshold=cluster_threshold)
-    laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
-    # restStateSub.plotEigenvectorCorrelation(eigvecs_within, analysis)
-    # restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis)
-    # restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis, adjustSize=False)
+    # restStateSub.run_plot_FstatComp(eigvecs_within,analysis)
+    # eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_within, eigvals_within, N, num_layers)
+    # cluster_groups, labels = laman.runClusterAnalysis(eigvecs_list, threshold=cluster_threshold)
+    # laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
+    restStateSub.plotEigenvectorCorrelation(eigvecs_within, analysis)
+    restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis)
+    restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis, adjustSize=False)
 
-    # restStateSub.plotScree(eigvals_within, analysis)
-    # crossingsWithin = restStateSub.run_plot_zeroCrossings(M, eigvecs_within, analysis)
-    # restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)
+    restStateSub.plotScree(eigvals_within, analysis)
+    crossingsWithin = restStateSub.run_plot_zeroCrossings(M, eigvecs_within, analysis)
+    restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)
     # restStateSub.plotTwoDimEmbedding(eigvecs_within, analysis)
 
 
@@ -98,7 +94,7 @@ elif analysis=="FullLayer":
     adj_matrices = []
 
     for data_dir in data_dirs:
-        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
         adj_matrix_full, fullTimeCourse, adj_matrix_within_corr = restStateSub.get_adj_matrix_full_multRuns()
         adj_matrices.append(adj_matrix_within_corr)
 
@@ -111,7 +107,7 @@ elif analysis=="FullLayer":
     else:
         M = adjMatrix
 
-    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
     eigvals_full, eigvecs_full = restStateSub.runLaplacianEmbedding(M, analysis, convert_to_binary=False, full=True)
     
     eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_full, eigvals_full, N, num_layers)
@@ -129,7 +125,7 @@ elif analysis=="SingleLayer":
     adj_matrices = []
 
     for data_dir in data_dirs:
-        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+        restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
         adj_matrix_full, fullTimeCourse, adj_matrix_within_corr = restStateSub.get_adj_matrix_full_multRuns()
         adj_matrices.append(adj_matrix_within_corr)
 
@@ -149,7 +145,7 @@ elif analysis=="SingleLayer":
 
     M_single = M[row_start:row_end, col_start:col_end]    
 
-    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, num_layers=1, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+    restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, num_layers=1, atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
     eigvals_full, eigvecs_full = restStateSub.runLaplacianEmbedding(M_single, analysis, num_components=20, convert_to_binary=False, full=True)
     restStateSub.plotScree(eigvals_full, analysis)
     crossingsFull = restStateSub.run_plot_zeroCrossings(M, eigvecs_full, analysis)
@@ -170,7 +166,7 @@ elif analysis=="SingleLayerComparison":
 
         for data_dir in data_dirs:
             restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, 
-                                                   atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+                                                   atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
             adj_matrix_full, fullTimeCourse, adj_matrix_within_corr = restStateSub.get_adj_matrix_full_multRuns()
             adj_matrices.append(adj_matrix_within_corr)
 
@@ -194,7 +190,7 @@ elif analysis=="SingleLayerComparison":
         M_single = M[row_start:row_end, col_start:col_end]    
 
         restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, num_layers=1, 
-                                               atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
+                                               atlas_dir = "../../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
         
         eigvals_full, eigvecs_full = restStateSub.runLaplacianEmbedding(M_single, analysis, num_components=20, 
                                                                         convert_to_binary=False, full=True, addName=f"_{lc[0]}_{lc[1]}")
