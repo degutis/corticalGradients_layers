@@ -6,11 +6,11 @@ spm_jobman('initcfg');   % Initialize job manager
 
 TR = 3.22;
 
-funcDir = fullfile('/Users','karolis','Desktop','highRes_Resting','sub-01','func','ses-02','derivatives');
+funcDir = fullfile('/Users','karolis','Desktop','highRes_Resting','sub-03','func','derivatives');
 funcFiles = dir(fullfile(funcDir, '*SMSEPI_mc.nii'));
 motionFiles = dir(fullfile(funcDir, '*SMSEPI_mc.par'));
 
-atlas_file = fullfile('/Users','karolis','Desktop','highRes_Resting','derivatives','ref_anat','sub-01','ses-02','HCP-MMP1_in-func.nii');
+atlas_file = fullfile('/Users','karolis','Desktop','highRes_Resting','derivatives','ref_anat','sub-03','HCP-MMP1_in-func.nii');
 V_a = spm_vol(atlas_file);
 Y_a = spm_read_vols(V_a);     
 

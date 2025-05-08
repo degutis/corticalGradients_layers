@@ -15,7 +15,8 @@ import plotly.graph_objects as go
 import networkx as nx
 from scipy.signal import resample
 from tqdm import tqdm
-from scipy.stats import f_oneway
+from collections import Counter
+
 
 
 
@@ -274,7 +275,8 @@ class LaminarRestingState:
             mins, rs = zip(*curve)
             label = 'All layers' if key=='all' else f'Layer {key}'
             plt.plot(mins, rs, marker='o', label=label)
-
+        
+        plt.ylim(0, 1)
         plt.xlabel('Test window length (minutes)')
         plt.ylabel(f'Mean FC‐matrix corr (ref={reference_minutes} min)')
         plt.title('Within‐subject FC reliability vs. time')
@@ -1152,4 +1154,191 @@ class LaminarRestingState:
         return outlier_idxs, diffs, neigh_mean
     
 
-    def 
+    def plotEigenvectorCorrelation(self, eigvecs_orig, name, limit=40, end_num=40):
+        
+        orig_X = eigvecs_orig.shape[1]
+        end = orig_X - end_num
+        eigvecs = np.hstack([
+            eigvecs_orig[:, :limit],   # cols 0 … limit-1
+            eigvecs_orig[:, end:]      # cols end … M-1
+            ])
+        print(eigvecs.shape)
+        n_rows, n_cols = eigvecs.shape
+        if n_rows != 1080:
+            raise ValueError(f"Expected 1080 rows; got {n_rows}")
+
+        layers = [eigvecs[i*360:(i+1)*360, :] for i in range(3)]
+        corr_mats = {}
+
+        for i in range(3):
+            for j in range(i, 3):
+                A = layers[i]
+                B = layers[j]
+
+                if i == j:
+                    # within-layer: correlation among columns of A
+                    # yields X×X matrix
+                    C = np.corrcoef(A, rowvar=False)
+                else:
+                    # between-layer: build a 360×(2X) array [A | B], then
+                    # corrcoef(..., rowvar=False) gives 2X×2X block matrix:
+                    #   [ Corr(A,A)    Corr(A,B) ]
+                    #   [ Corr(B,A)    Corr(B,B) ]
+                    # we want the top-right block
+                    M = np.concatenate([A, B], axis=1)             # 360×(2X)
+                    bigC = np.corrcoef(M, rowvar=False)            # 2X×2X
+                    C = bigC[:n_cols, n_cols:2*n_cols]            # X×X
+
+                corr_mats[(i, j)] = C
+
+        pairs = [(0,0), (1,1), (2,2),
+                (0,1), (0,2),
+                (1,2)]
+        tick_labels = list(range(1, limit+1)) + list(range(end+1, orig_X+1))    
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        
+        for ax, (i, j) in zip(axes.flat, pairs):
+            C = corr_mats[(i, j)]
+            im = ax.imshow(C, vmin=-1, vmax=1, cmap='RdBu_r')
+            ax.set_title(f"Layer {i} vs Layer {j}")
+            # ax.set_xticklabels(tick_labels)
+            # ax.set_yticklabels(tick_labels)
+
+            ax.set_xlabel('Eigenvector index')
+            ax.set_ylabel('Eigenvector index')
+        
+        fig.suptitle(f"{name} Layer Correlations", fontsize=18)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        # shared colorbar
+        cbar = fig.colorbar(im, ax=axes.ravel().tolist(), shrink=0.8)
+        cbar.set_label('Pearson r')
+        
+        plt.savefig(f"{self.data_dir}/{name}/CorrelationEigVecsMatrices_First{limit}_Last{end_num}.png", bbox_inches="tight")
+        plt.close()
+
+
+    def identifyEigvecActivityPartOfRS(self, eigvecs_orig, name, ignoreFirst=4, limit=25, end_num=0, thresh=3, adjustSize=True, excludeNone=True):
+        
+        if adjustSize:
+            orig_X = eigvecs_orig.shape[1]
+            end = orig_X - end_num
+
+            if end_num>0:
+                eigvecs = np.hstack([
+                    eigvecs_orig[:, :limit],   # cols 0 … limit-1
+                    eigvecs_orig[:, end:]      # cols end … M-1
+                    ])
+            else:
+                eigvecs = eigvecs_orig[:, ignoreFirst:limit] # ignore the firs
+
+        else:
+            eigvecs = eigvecs_orig
+
+        eigvecs_reshaped = eigvecs.reshape(360, 3, eigvecs.shape[1])
+        mu    = eigvecs_reshaped.mean(axis=0)
+        sigma = eigvecs_reshaped.std(axis=0, ddof=0)
+        z = (eigvecs_reshaped - mu[None, :, :]) / sigma[None, :, :]
+        bins = ((z < -thresh) | (z > thresh)).astype(int)
+
+        cats = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)   # shape (360,), values 1…12
+        cats_exp = cats[:, None, None]
+        counts = np.zeros((12, bins.shape[1], bins.shape[2]), dtype=int)
+
+        # Vectorized count over the first axis (360)
+        for k in range(1, 13):
+            mask = (bins == 1) & (cats_exp == k)
+            counts[k-1] = mask.sum(axis=0)
+
+        # counts_dict = {
+        #     k: counts[k-1]
+        #     for k in range(1, 13)
+        # }
+
+        # layer_totals = counts.sum(axis=0)
+
+        # layer_sums = {
+        #     layer_idx + 1: layer_totals[layer_idx]
+        #     for layer_idx in range(layer_totals.shape[0])
+        # }
+
+        cat_counts = counts.sum(axis=2)
+
+        tick_labels = ["Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular", 
+                       "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory", 
+                       "Default", "Posterior-Multimodal","Ventral-Multimodal", "Orbito-Affective"]
+
+        fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+
+        for layer in range(3):
+            bars = axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
+            axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
+            axs[layer].set_title(f'Layer {layer+1}')
+            axs[layer].set_ylabel('Outlier Count')
+            # annotate each bar with its height
+            for bar in bars:
+                height = bar.get_height()
+                axs[layer].text(
+                    bar.get_x() + bar.get_width() / 2,
+                    height,
+                    f'{int(height)}',
+                    ha='center',
+                    va='bottom'
+        )
+
+        axs[-1].set_xlabel('Resting State Networks')
+        plt.xticks(np.arange(1,13), tick_labels, rotation=90)
+        plt.tight_layout()
+        if adjustSize:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_First{limit}_Last{end_num}.png", bbox_inches="tight")
+        else:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN.png", bbox_inches="tight")
+        plt.close()
+
+        ## Plotting the combinations of networks
+        num_layers, num_samples = counts.shape[1], counts.shape[2]
+
+        layer_counters = []
+        for layer in range(num_layers):
+            labels = []
+            for sample in range(num_samples):
+                present = [
+                    tick_labels[k]
+                    for k in range(len(tick_labels))
+                    if counts[k, layer, sample] > 1
+                ]
+                label = "+".join(present) if present else "None"
+                labels.append(label)
+            layer_counters.append(Counter(labels))
+        
+        if excludeNone:
+            all_combos = sorted(
+                set().union(*(c.keys() for c in layer_counters)) 
+                - {"None"}
+                )
+        else:
+            all_combos = sorted(set().union(*(c.keys() for c in layer_counters)))
+
+        freqs = np.zeros((num_layers, len(all_combos)), dtype=int)
+        for i, ctr in enumerate(layer_counters):
+            for j, combo in enumerate(all_combos):
+                freqs[i, j] = ctr.get(combo, 0)
+
+        fig, axs = plt.subplots(num_layers, 1, figsize=(12, 8), sharex=True)
+
+        for layer in range(num_layers):
+            axs[layer].bar(np.arange(len(all_combos)), freqs[layer])
+            axs[layer].set_title(f'Layer {layer+1}')
+            axs[layer].set_ylabel('Frequency')
+
+        # only bottom subplot gets the x‐labels
+        axs[-1].set_xticks(np.arange(len(all_combos)))
+        axs[-1].set_xticklabels(all_combos, rotation=90)
+        axs[-1].set_xlabel('Network Combination Label')
+
+        plt.tight_layout()
+        if adjustSize:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsComboRSN_First{limit}_Last{end_num}.png", bbox_inches="tight")
+        else:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsComboRSN.png", bbox_inches="tight")
+        plt.close()

@@ -9,7 +9,7 @@ os.environ["PATH"] += os.pathsep + script_dir
 sys.path.append(script_dir)
 
 import layer_analysis as analysis
-import voxeldepths_from_surfaces as vdfs
+# import voxeldepths_from_surfaces as vdfs
 
 def process_ref_anat_subject(studyDataDir, subject):
 
@@ -115,5 +115,5 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/Users/karolis/Desktop/highRes_Resting"
-    subject = "sub-02"
+    subject = "sub-03"
     process_ref_anat_subject(studyDir, subject)

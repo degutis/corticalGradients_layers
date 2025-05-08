@@ -2,7 +2,7 @@
 
 export SUBJECTS_DIR=/Users/karolis/Desktop/highRes_resting/derivatives/freesurfer
 
-subject=sub-02
+subject=sub-03
 refAnatDir=/Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space
@@ -27,11 +27,8 @@ antsApplyTransforms --interpolation BSpline[5] \
                     -r ${refAnatDir}/fs_t1_in-func.nii \
                     -t ${refAnatDir}/fs_to_func_1Warp.nii.gz \
                     -t ${refAnatDir}/fs_to_func_0GenericAffine.mat \
-                    -o ${refAnatDir}/HCP-MM1_in-func.nii \
+                    -o ${refAnatDir}/HCP-MMP1_in-func.nii \
                     -n NearestNeighbor
-
-
-
 
 
 ### Maybe this is not necessary:

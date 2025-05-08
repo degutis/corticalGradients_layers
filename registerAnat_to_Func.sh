@@ -1,6 +1,6 @@
 #!/bin/bash
 
-subject=sub-02
+subject=sub-03
 fs_dir=/Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/${subject}/
 bold_file=${subject}_bold_SMSEPI_mc_MEANED_full.nii
 bold_file_withoutExt=${subject}_bold_SMSEPI_mc_MEANED_full
@@ -15,7 +15,7 @@ N4BiasFieldCorrection -i ${bold_file} -o ${n4bold_file}
 bold_file=${n4bold_file}
 
 bold_brain_file=${bold_file_withoutExt}_n4_brain.nii
-bet ${bold_file} ${bold_brain_file} -f 0.07
+bet ${bold_file} ${bold_brain_file} -f 0.07 #0.07
 bold_file=${bold_brain_file}
 
 gunzip ${bold_file}.gz

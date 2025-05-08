@@ -14,8 +14,8 @@ binarize = True
 subtractAverage = True
 hcplabels = True
 
-data_dirs = ['../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs', '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs']
-output_dir = '../highRes_resting/derivatives/correlations/combo/NoThresh_largerSupDeep'
+data_dirs = ['../highRes_resting/derivatives/correlations/sub-01/Multiple_Runs/largeGap', '../highRes_resting/derivatives/correlations/sub-02/Multiple_Runs/smallGap', '../highRes_resting/derivatives/correlations/sub-03/Multiple_Runs/smallGap']
+output_dir = '../highRes_resting/derivatives/correlations/combo/NoThresh_smallGap'
 os.makedirs(output_dir, exist_ok=True)
 
 analysis = "WithinLayer"
@@ -64,25 +64,30 @@ if analysis=="WithinLayer":
         [I_N, I_N, adjMatrix[:,:,2]]
     ])
 
+    # np.savetxt("fM.csv", M, delimiter=",", fmt="%s")
+
     restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-02/HCP-MMP1_in-func.nii")
 
-    # restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
-    # restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
-    # restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
-    # restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
+    restStateSub.plotConnectogram(adjMatrix[:,:,0], analysis, "Deep", color="red", percent=1)
+    restStateSub.plotConnectogram(adjMatrix[:,:,1], analysis, "Middle", color="green", percent=1)
+    restStateSub.plotConnectogram(adjMatrix[:,:,2], analysis, "Sup", color="blue", percent=1)
+    restStateSub.plotConnectogram_allInOne(adjMatrix[:,:,0], adjMatrix[:,:,1], adjMatrix[:,:,2], analysis, percent=1)
 
-    # rich_nodes1 = restStateSub.calculateRichClub(adjMatrix[:,:,0], analysis, "Deep")
-    # rich_nodes2 = restStateSub.calculateRichClub(adjMatrix[:,:,1], analysis, "Middle")
-    # rich_nodes3 = restStateSub.calculateRichClub(adjMatrix[:,:,2], analysis, "Sup")
-    # restStateSub.plotRichClub(rich_nodes1, rich_nodes2, rich_nodes3, analysis)
+    rich_nodes1 = restStateSub.calculateRichClub(adjMatrix[:,:,0], analysis, "Deep")
+    rich_nodes2 = restStateSub.calculateRichClub(adjMatrix[:,:,1], analysis, "Middle")
+    rich_nodes3 = restStateSub.calculateRichClub(adjMatrix[:,:,2], analysis, "Sup")
+    restStateSub.plotRichClub(rich_nodes1, rich_nodes2, rich_nodes3, analysis)
 
     eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, num_components=40, convert_to_binary=False, full=True, vMax=0.1)
     restStateSub.run_plot_FstatComp(eigvecs_within,analysis)
-    # eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_within, eigvals_within, N, num_layers)
-    # cluster_groups, labels = laman.runClusterAnalysis(eigvecs_list, threshold=cluster_threshold)
-    # laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
+    eigvecs_list, eigvalue_list, source_info = laman.convert_eigvals_to_list(eigvecs_within, eigvals_within, N, num_layers)
+    cluster_groups, labels = laman.runClusterAnalysis(eigvecs_list, threshold=cluster_threshold)
+    laman.plotEigvectors_similar_distinct(eigvecs_list, eigvalue_list, source_info, cluster_groups, restStateSub, eigenvalue_threshold, cluster_threshold, analysis)
+    # restStateSub.plotEigenvectorCorrelation(eigvecs_within, analysis)
+    # restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis)
+    # restStateSub.identifyEigvecActivityPartOfRS(eigvecs_within, analysis, adjustSize=False)
 
-    restStateSub.plotScree(eigvals_within, analysis)
+    # restStateSub.plotScree(eigvals_within, analysis)
     # crossingsWithin = restStateSub.run_plot_zeroCrossings(M, eigvecs_within, analysis)
     # restStateSub.eigvecs_to_nifti(eigvecs_within, analysis, hcp_atlas=hcplabels)
     # restStateSub.plotTwoDimEmbedding(eigvecs_within, analysis)
