@@ -1,4 +1,4 @@
-import laminarRestingState as lrs
+import restingState.laminarRestingState as lrs
 
 #data_dir = '../highRes_resting/derivatives/correlations/sub-01/Gap_new'
 

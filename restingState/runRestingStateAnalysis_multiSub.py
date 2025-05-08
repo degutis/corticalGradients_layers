@@ -1,11 +1,11 @@
-import laminarRestingState as lrs
+import restingState.laminarRestingState as lrs
 import numpy as np
 import os
 
 from sklearn.cluster import AgglomerativeClustering
 from collections import defaultdict
 
-import laminarAnalyses as laman
+import restingState.laminarAnalyses as laman
 
 N = 360
 setThresh = 90

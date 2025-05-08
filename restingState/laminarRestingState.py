@@ -18,12 +18,6 @@ from tqdm import tqdm
 from collections import Counter
 
 
-
-
-
-
-
-
 class LaminarRestingState:
     def __init__(self, data_dir, N, setThresh, num_layers = 3, atlas_dir = "../highRes_resting/derivatives/ref_anat/sub-01/HCP-MM1_in-func.nii"):
         

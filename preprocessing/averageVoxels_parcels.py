@@ -105,16 +105,16 @@ def averageVoxels_parcels_with_fs(
     ):
     
     if subject=="sub-01":
-        BOLD_data_path=f"../highRes_resting/{subject}/func/ses-02/derivatives/merged_residuals_{runNum}.nii"    
-        layer_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/ln_depths_equivol.nii"
-        atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/HCP-MMP1_in-func.nii"
+        BOLD_data_path=f"../../highRes_resting/{subject}/func/ses-02/derivatives/merged_residuals_{runNum}.nii"    
+        layer_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ses-02/ln_depths_equivol.nii"
+        atlas_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ses-02/HCP-MMP1_in-func.nii"
     else:
-        BOLD_data_path=f"../highRes_resting/{subject}/func/derivatives/merged_residuals_{runNum}.nii"
-        layer_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
-        atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
+        BOLD_data_path=f"../../highRes_resting/{subject}/func/derivatives/merged_residuals_{runNum}.nii"
+        layer_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
+        atlas_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
 
-    fs_atlas_path = f"../highRes_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
-    output_path = f"../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}/"
+    fs_atlas_path = f"../../highRes_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
+    output_path = f"../../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}/"
     
     os.makedirs(output_path, exist_ok=True)
 
