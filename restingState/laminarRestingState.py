@@ -16,6 +16,8 @@ import networkx as nx
 from scipy.signal import resample
 from tqdm import tqdm
 from collections import Counter
+from scipy.stats import f_oneway
+
 
 
 class LaminarRestingState:
@@ -28,103 +30,6 @@ class LaminarRestingState:
         self.num_layers = num_layers
         self.npy_files = [f for f in os.listdir(data_dir) if f.endswith(".npy")]
         self.npy_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".npy")])
-
-    # def plotReliability(self, TR=3.2, reference_minutes=7, min_test_minutes=2, n_iterations=500):
-    #     """
-    #     Computes within‐subject reliability (Laumann‐style) of resting‐state FC
-    #     as a function of total scan length, separately for each gray‐matter layer.
-    #     """
-    #     # volumes per minute, rounded to nearest integer
-    #     volumes_per_minute = int(round(60.0 / TR))
-
-    #     # Gather .npy files
-    #     npy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
-    #     layer_groups = defaultdict(list)
-
-    #     for fname in npy_files:
-    #         try:
-    #             layer_str = fname.split('_')[-1].replace('.npy', '')
-    #             layer_num = int(layer_str)
-    #         except Exception as e:
-    #             raise ValueError(f"Could not extract layer number from filename: {fname}") from e
-    #         layer_groups[layer_num].append(os.path.join(self.data_dir, fname))
-
-    #     reliability_results = {}
-
-    #     for layer_num in sorted(layer_groups):
-    #         files = layer_groups[layer_num]
-    #         print(f"\nProcessing Layer {layer_num} with {len(files)} run(s)")
-
-    #         # Load and concatenate
-    #         runs = [np.load(fp) for fp in files]  # each: [n_voxels, n_timepoints]
-    #         data = np.concatenate(runs, axis=1)    # [n_voxels, total_timepoints]
-    #         n_parcels, total_volumes = data.shape
-    #         total_minutes = total_volumes // volumes_per_minute
-
-    #         print(f"  total_volumes = {total_volumes}, total_minutes = {total_minutes}")
-
-    #         # if too short, skip
-    #         if total_minutes <= reference_minutes + min_test_minutes - 1:
-    #             print(f"  Skipping layer {layer_num}: not enough data for reference={reference_minutes} and test>= {min_test_minutes} minutes.")
-    #             continue
-
-    #         test_minutes = range(min_test_minutes, total_minutes - reference_minutes + 1)
-    #         layer_curve = []
-
-    #         # pre‐compute upper‐tri indices for speed
-    #         iu = np.triu_indices(n_parcels, k=1)
-
-    #         for tmin in tqdm(test_minutes, desc=f"Layer {layer_num}"):
-    #             test_vols = tmin * volumes_per_minute
-    #             ref_vols  = reference_minutes * volumes_per_minute
-    #             corrs = []
-
-    #             for _ in range(n_iterations):
-    #                 # --- reference segment ---
-    #                 start_ref = np.random.randint(0, total_volumes - ref_vols + 1)
-    #                 ref_seg = data[:, start_ref : start_ref + ref_vols]
-
-    #                 # --- test segment ---
-    #                 start_test = np.random.randint(0, total_volumes - test_vols + 1)
-    #                 test_seg = data[:, start_test : start_test + test_vols]
-
-    #                 # if lengths mismatch, up/downsample test → ref length
-    #                 if test_seg.shape[1] != ref_seg.shape[1]:
-    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
-
-    #                 # compute FC matrices [n_parcels×n_parcels]
-    #                 ref_fc  = np.corrcoef(ref_seg)
-    #                 test_fc = np.corrcoef(test_seg)
-
-    #                 # flatten upper‐triangle
-    #                 ref_vals  = ref_fc[iu]
-    #                 test_vals = test_fc[iu]
-
-    #                 # mask out NaNs
-    #                 valid = ~np.isnan(ref_vals) & ~np.isnan(test_vals)
-    #                 if valid.sum() > 1:  # need at least two valid points
-    #                     r = np.corrcoef(ref_vals[valid], test_vals[valid])[0, 1]
-    #                     corrs.append(r)
-
-    #             mean_r = np.nanmean(corrs)
-    #             layer_curve.append((tmin, mean_r))
-
-    #         reliability_results[layer_num] = layer_curve
-
-    #     # plot
-    #     plt.figure(figsize=(10, 6))
-    #     for layer_num, curve in sorted(reliability_results.items()):
-    #         minutes, rs = zip(*curve)
-    #         plt.plot(minutes, rs, marker='o', label=f'Layer {layer_num}')
-
-    #     plt.xlabel('Randomly sampled minutes (test window)')
-    #     plt.ylabel(f'Mean correlation (ref={reference_minutes} min)')
-    #     plt.title('Within-subject reliability vs. time per layer')
-    #     plt.grid(True)
-    #     plt.legend()
-    #     plt.tight_layout()
-    #     outpath = os.path.join(self.data_dir, 'Reliability.png')
-    #     plt.savefig(outpath)  
       
     def plotReliability(self, TR=3.2, reference_minutes=4, min_test_minutes=2, n_iterations=500):
         """
@@ -628,7 +533,7 @@ class LaminarRestingState:
 
         print("All brain maps saved successfully!")
 
-    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=None, folder_name="eigenvector_layers"):
+    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=["Deep","Middle","Superficial","Average"], folder_name="eigenvector_layers"):
 
         os.makedirs(f"{self.data_dir}/{name}/{folder_name}", exist_ok=True)  # Create folder for layer-wise maps
 
@@ -636,15 +541,18 @@ class LaminarRestingState:
         
         if noSubcortical:
             current_length = len(Xp[:, 0])  # Get the number of parcels (rows)
+            print(f'Currend length/num of parcels: {current_length}')
             target_length = len(mmp_labels)  # Target length is the number of regions (parcels)
             zeros_to_add = target_length - current_length
+            print(f'Zeros to add: {zeros_to_add}')
             Xp = np.concatenate((Xp, np.zeros((zeros_to_add, Xp.shape[1]))), axis=0)    
 
-        orientations = ["lateral", "medial", "medial", "lateral"]
+        orientations = ["lateral", "medial", "lateral", "medial"]
 
         # Determine the global min and max values across all layers
         all_data = np.hstack([hcp.cortex_data(hcp.unparcellate(Xp[:, i], hcp.mmp)) for i in range(Xp.shape[1])])
-        vmin, vmax = np.percentile(all_data, [2, 98])  #np.min(all_data), np.max(all_data)
+        vmin, vmax = np.nanpercentile(all_data, [2, 98])  #np.min(all_data), np.max(all_data)
+        vmin, vmax = 0.3, 1.1
 
         # Create a figure with multiple rows and shared colorbar
         fig, axes = plt.subplots(
@@ -857,7 +765,7 @@ class LaminarRestingState:
         return labels
 
 
-    def plotConnectogram(self, connectivity_matrix, name, layer, color="red", n=360, percent=20):
+    def plotConnectogfram(self, connectivity_matrix, name, layer, color="red", n=360, percent=20):
 
         os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
 
@@ -1062,12 +970,11 @@ class LaminarRestingState:
         x = np.arange(1, len(avg_corrs) + 1)
 
         fig, ax1 = plt.subplots()
-
         ax1.plot(x, dissimilar, marker='o', label='Avg Pearson r')
-
         ax1.set_xlabel('Eigenvector Number')
         ax1.set_ylabel('Average Dissimilarity (1-r)')
         fig.suptitle('Difference Metrics per Eigenvector')
+        ax1.grid(True)
         fig.tight_layout()
         fig.savefig(f"{self.data_dir}/{name}/DifferenceInEigvecs.png", bbox_inches="tight")
         plt.close()
@@ -1212,7 +1119,7 @@ class LaminarRestingState:
         plt.close()
 
 
-    def identifyEigvecActivityPartOfRS(self, eigvecs_orig, name, ignoreFirst=4, limit=25, end_num=0, thresh=3, adjustSize=True, excludeNone=True):
+    def identifyEigvecActivityPartOfRS(self, eigvecs_orig, name, ignoreFirst=5, limit=20, end_num=0, thresh=4, adjustSize=True, excludeNone=False):
         
         if adjustSize:
             orig_X = eigvecs_orig.shape[1]
@@ -1224,16 +1131,23 @@ class LaminarRestingState:
                     eigvecs_orig[:, end:]      # cols end … M-1
                     ])
             else:
-                eigvecs = eigvecs_orig[:, ignoreFirst:limit] # ignore the firs
+                eigvecs = eigvecs_orig[:, ignoreFirst:limit] # ignore the first
 
         else:
             eigvecs = eigvecs_orig
 
-        eigvecs_reshaped = eigvecs.reshape(360, 3, eigvecs.shape[1])
-        mu    = eigvecs_reshaped.mean(axis=0)
-        sigma = eigvecs_reshaped.std(axis=0, ddof=0)
-        z = (eigvecs_reshaped - mu[None, :, :]) / sigma[None, :, :]
-        bins = ((z < -thresh) | (z > thresh)).astype(int)
+        # eigvecs_reshaped = eigvecs.reshape(360, 3, eigvecs.shape[1])
+        # mu    = eigvecs_reshaped.mean(axis=0)
+        # sigma = eigvecs_reshaped.std(axis=0, ddof=0)
+        # z = (eigvecs_reshaped - mu[None, :, :]) / sigma[None, :, :]
+        # bins = ((z < -thresh) | (z > thresh)).astype(int)
+
+        mu_glob    = eigvecs.mean(axis=0)
+        sigma_glob = eigvecs.std (axis=0, ddof=0) 
+
+        z_glob     = (eigvecs - mu_glob[None, :]) / sigma_glob[None, :]
+        bins_glob  = (np.abs(z_glob) > thresh).astype(int)
+        bins = bins_glob.reshape(360, 3, -1)
 
         cats = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)   # shape (360,), values 1…12
         cats_exp = cats[:, None, None]
@@ -1262,8 +1176,7 @@ class LaminarRestingState:
                        "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory", 
                        "Default", "Posterior-Multimodal","Ventral-Multimodal", "Orbito-Affective"]
 
-        fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
-
+        fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True, sharey=True)
         for layer in range(3):
             bars = axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
             axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
@@ -1288,6 +1201,60 @@ class LaminarRestingState:
         else:
             plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN.png", bbox_inches="tight")
         plt.close()
+
+
+
+        n_networks = len(tick_labels)
+        ncols = 3
+        nrows = int(np.ceil(n_networks / ncols))
+
+        fig, axs = plt.subplots(nrows, ncols, figsize=(12, 10), sharey=True)
+        axs = axs.ravel()  # flatten for easy indexing
+
+        layer_names = ["Deep", "Middle", "Superficial"]
+        layers = np.arange(1, 4)
+        
+        n_networks = len(tick_labels)
+        ncols = 3
+        nrows = int(np.ceil(n_networks / ncols))
+
+        fig, axs = plt.subplots(nrows, ncols, figsize=(12, 10), sharey=True)
+        axs = axs.ravel()
+
+        for idx in range(n_networks):
+            ax = axs[idx]
+            counts_loop = cat_counts[idx]   # shape (3,)
+            bars = ax.bar(layers, counts_loop, width=0.6)
+            ax.set_title(tick_labels[idx], fontsize=10)
+            ax.set_xticks(layers)
+            ax.set_xticklabels(layer_names, rotation=0)
+            # annotate
+            for bar in bars:
+                h = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h,
+                    f"{h}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8
+                )
+
+        # remove empty subplots
+        for j in range(n_networks, nrows * ncols):
+            fig.delaxes(axs[j])
+
+        fig.supylabel("Outlier Count")
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.95)
+        plt.suptitle("Outlier Counts per RSN across Layers", fontsize=14)
+
+        if adjustSize:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_Plot2_First{limit}_Last{end_num}.png", bbox_inches="tight")
+        else:
+            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_Plot2.png", bbox_inches="tight")
+        plt.close()
+
 
         ## Plotting the combinations of networks
         num_layers, num_samples = counts.shape[1], counts.shape[2]
@@ -1318,8 +1285,8 @@ class LaminarRestingState:
             for j, combo in enumerate(all_combos):
                 freqs[i, j] = ctr.get(combo, 0)
 
-        fig, axs = plt.subplots(num_layers, 1, figsize=(12, 8), sharex=True)
-
+        print(freqs.sum(axis=(0,1)))
+        fig, axs = plt.subplots(num_layers, 1, figsize=(12, 8), sharex=True, sharey=True)
         for layer in range(num_layers):
             axs[layer].bar(np.arange(len(all_combos)), freqs[layer])
             axs[layer].set_title(f'Layer {layer+1}')
@@ -1336,3 +1303,426 @@ class LaminarRestingState:
         else:
             plt.savefig(f"{self.data_dir}/{name}/EigvecsComboRSN.png", bbox_inches="tight")
         plt.close()
+
+
+    def zero_lag_fc(self, X):
+        """Pearson FC of X (n_parcels×T) at lag 0."""
+        Xz = (X - X.mean(axis=1, keepdims=True)) / X.std(axis=1, keepdims=True)
+        return (Xz @ Xz.T) / (X.shape[1] - 1)
+
+    def lagged_corr(self, X, Y, t):
+        """
+        Pearson corr of X(t) with Y(t+t).
+        X, Y shape = (n_parcels, T)
+        t > 0: X leads Y
+        t < 0: Y leads X
+        """
+        n, T = X.shape
+        if t >= 0:
+            Xtr, Ytr = X[:, :T-t], Y[:, t:]
+        else:
+            Xtr, Ytr = X[:, -t:],  Y[:, :T+t]
+        Xz = (Xtr - Xtr.mean(axis=1, keepdims=True)) / Xtr.std(axis=1, keepdims=True)
+        Yz = (Ytr - Ytr.mean(axis=1, keepdims=True)) / Ytr.std(axis=1, keepdims=True)
+        return (Xz @ Yz.T) / (Xtr.shape[1] - 1)
+
+    def lagged_multilayer_fc(self, t=2):
+        """
+        data: np.ndarray, shape (360, 3, T)
+        t: integer lag in timepoints
+        returns: FC matrix shape (1080, 1080)
+        """
+
+        layer_groups = defaultdict(list)
+        
+        for ifile, file in enumerate(self.npy_files):
+            try:
+                layer_str = file.split('_')[-1].replace('.npy', '')
+                layer_num = int(layer_str)
+                layer_groups[layer_num].append(file)
+            except Exception as e:
+                raise ValueError(f"Could not extract layer number from filename: {file}") from e
+
+        sorted_layers = sorted(layer_groups.items())
+        data = np.empty((self.N, self.num_layers, ((ifile+1)//3)*125))
+        print(f"Ugly hard coding of T")
+
+        for i, (layer_num, files) in enumerate(sorted_layers):
+            all_time_series = []
+
+            for file in files:
+                file_path = os.path.join(self.data_dir, file)
+                time_series = np.load(file_path)
+                all_time_series.append(time_series)
+
+            concatenated = np.concatenate(all_time_series, axis=1)
+            data[:, i, :] = concatenated
+
+
+        n_parcels, n_layers, T = data.shape
+        N = n_parcels * n_layers
+        M = np.zeros((N, N))
+
+        # 1) fill diagonal blocks with zero‐lag FC, for each layer
+        for t in range(n_layers):
+            block = self.zero_lag_fc(data[:, t, :])
+            i0 = t * n_parcels
+            M[i0:i0+n_parcels, i0:i0+n_parcels] = block
+
+        # 2) fill off‐diagonal:
+        #    upper‐triangle blocks (ℓ1 < ℓ2) get corr at +τ (layer ℓ1 leads ℓ2)
+        #    lower‐triangle gets the opposite, i.e. corr at –τ (layer ℓ2 leads ℓ1)
+        for t1 in range(n_layers):
+            for t2 in range(t1+1, n_layers):
+                X = data[:,t1, :]
+                Y = data[:, t2, :]
+                C_pos = self.lagged_corr(X, Y, +t)
+                C_neg = self.lagged_corr(X, Y, -t)  # equivalently C_pos.T
+                i1, i2 = t1*n_parcels, t2*n_parcels
+
+                # ℓ1→ℓ2 block (upper block)  
+                M[i1:i1+n_parcels, i2:i2+n_parcels] = C_pos
+
+                # ℓ2→ℓ1 block (lower block)
+                M[i2:i2+n_parcels, i1:i1+n_parcels] = C_neg
+
+        return M
+
+
+
+    def eigenvector_centrality_calc(self,
+                                    adj_matrix): 
+        # if assume_symmetric:
+        #     eigvals, eigvecs = np.linalg.eigh(adj_matrix)
+        # else:
+        #     eigvals, eigvecs = np.linalg.eig(adj_matrix)
+
+        # # sort by descending magnitude
+        # idx = np.argsort(np.abs(eigvals))[::-1]
+        # eigvals = eigvals[idx]
+        # eigvecs = eigvecs[:, idx]
+
+        # # principal eigenpair
+        # principal_eigval = eigvals[0]
+        # principal_eigvec = eigvecs[:, 0]
+
+        # # take real part if it's symmetric (imag parts should be ~0)
+        # if assume_symmetric and np.iscomplexobj(principal_eigvec):
+        #     principal_eigvec = principal_eigvec.real
+
+        # # normalize
+        # if normalize == "l1":
+        #     centrality = principal_eigvec / np.sum(principal_eigvec)
+        # elif normalize == "l2":
+        #     centrality = principal_eigvec / np.linalg.norm(principal_eigvec)
+        # else:
+        #     raise ValueError("normalize must be 'l1' or 'l2'")
+
+        G = nx.from_numpy_array(adj_matrix)
+        centrality = nx.eigenvector_centrality(G, max_iter=1000)
+        centrality_arr = np.array([centrality[i] for i in range(G.number_of_nodes())])
+
+        mat = centrality_arr.reshape(360, 3)
+        one_hot_centrality = np.zeros_like(mat, dtype=int)
+
+        # # for each row, find the index of the max and set that position to 1
+        idx_max = np.argmax(mat, axis=1)
+        one_hot_centrality[np.arange(360), idx_max] = 1 
+
+        return centrality_arr, one_hot_centrality
+
+
+    def eigenvector_centrality_plot(self,
+                                    centrality,
+                                    one_hot_centrality,
+                                    name,
+                                    additionalName=''
+                                    ):
+        cats = np.loadtxt(
+            'cortex_parcel_network_assignments.txt', 
+            dtype=int
+        )
+        subs = centrality.shape[-1]
+
+        counts = np.zeros((12, 3,subs), dtype=int)
+        averages = np.zeros((12, 3, subs), dtype=float)
+        
+        for s in range(subs):
+            mat = centrality[:,s].reshape(360, 3)
+            curr_one_hot = one_hot_centrality[:, :, s]
+            for k in range(1, 13):
+                mask = (cats == k)
+                counts[k-1, :, s] = curr_one_hot[mask, :].sum(axis=0)
+                data = mat[mask, :]
+                averages[k-1, :, s] = data.mean(axis=0)
+
+
+        # plotting
+        tick_labels = [
+            "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+            "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+            "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
+        ]
+
+        
+        fig, axes = plt.subplots(4, 3, figsize=(12, 16), sharey=True)
+        axes = axes.flatten()
+        for idx, ax in enumerate(axes):
+            # bar positions for the 3 layers
+            x      = np.arange(1, 4)
+            heights= np.mean(counts[idx, :, :],axis=-1) 
+            errors = np.std(counts[idx, :, :], axis=-1)/np.sqrt(subs)  
+
+            stat, pval = f_oneway(
+                counts[idx, 0, :],
+                counts[idx, 1, :],
+                counts[idx, 2, :]
+            )
+
+            bars = ax.bar(
+                x, heights,
+                yerr=errors,
+                capsize=5,
+                edgecolor='black'
+            )
+
+            sig = "*" if pval < 0.05 else ""
+            ax.text(
+                0.5, 0.95,
+                f"p = {pval:.3f}{sig}",
+                transform=ax.transAxes,
+                ha='center',
+                va='top',
+                fontsize=10
+            )
+
+            ax.set_title(tick_labels[idx])
+            ax.set_xticks(x)
+            ax.set_xticklabels(["Deep", "Middle", "Superficial"])
+            ax.set_ylabel("Parcel count - eigenvector centrality \n(± SEM)")
+
+            # annotate each bar with its mean value
+            for bar in bars:
+                h = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h + errors[list(bars).index(bar)] + 0.01*h,  # place above error‐bar
+                    f"{h:.4f}",
+                    ha="center",
+                    va="bottom"
+                )
+
+        plt.tight_layout()
+        plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_EigCentrality_AcrossSubs{additionalName}.png", bbox_inches="tight")
+        plt.close(fig)
+
+
+
+        fig, axes = plt.subplots(4, 3, figsize=(12, 16), sharey=True)
+        axes = axes.flatten()
+        for idx, ax in enumerate(axes):
+            # bar positions for the 3 layers
+            x      = np.arange(1, 4)
+            heights= np.mean(averages[idx, :, :],axis=-1) 
+            errors = np.std(averages[idx, :, :], axis=-1)/np.sqrt(subs)  
+
+            stat, pval = f_oneway(
+                averages[idx, 0, :],
+                averages[idx, 1, :],
+                averages[idx, 2, :]
+            )
+
+
+            # draw bars with error‐bars
+            bars = ax.bar(
+                x, heights,
+                yerr=errors,
+                capsize=5,
+                edgecolor='black'
+            )
+
+            sig = "*" if pval < 0.05 else ""
+            ax.text(
+                0.5, 0.95,
+                f"p = {pval:.3f}{sig}",
+                transform=ax.transAxes,
+                ha='center',
+                va='top',
+                fontsize=10
+            )
+
+            ax.set_title(tick_labels[idx])
+            ax.set_xticks(x)
+            ax.set_xticklabels(["Deep", "Middle", "Superficial"])
+            ax.set_ylabel("Mean Centrality\n(± SEM)")
+
+            # annotate each bar with its mean value
+            for bar in bars:
+                h = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h + errors[list(bars).index(bar)] + 0.01*h,  # place above error‐bar
+                    f"{h:.4f}",
+                    ha="center",
+                    va="bottom"
+                )
+
+        plt.tight_layout()
+        plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_EigCentrality_MeanSEM_AcrossSubs{additionalName}.png",
+                    bbox_inches="tight")
+        plt.close(fig)
+
+    def eigenvector_centrality_plot_avg(self,
+                                    centrality,
+                                    one_hot_centrality,
+                                    name,
+                                    additionalName=''
+                                    ):
+        cats = np.loadtxt(
+            'cortex_parcel_network_assignments.txt', 
+            dtype=int
+        )
+
+        counts = np.zeros((12, 3), dtype=int)
+        averages = np.zeros((12, 3), dtype=float)
+        
+        mat = centrality.reshape(360, 3)
+        for k in range(1, 13):
+            mask = (cats == k)
+            counts[k-1, :] = one_hot_centrality[mask, :].sum(axis=0)
+            data = mat[mask, :]
+            averages[k-1, :] = data.mean(axis=0)
+
+
+        # plotting
+        tick_labels = [
+            "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+            "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+            "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
+        ]
+
+        
+        fig, axes = plt.subplots(4, 3, figsize=(12, 16), sharey=True)
+        axes = axes.flatten()
+        for idx, ax in enumerate(axes):
+            # bar positions for the 3 layers
+            x      = np.arange(1, 4)
+            heights= counts[idx, :] 
+
+            bars = ax.bar(
+                x, heights,
+                capsize=5,
+                edgecolor='black'
+            )
+
+            ax.set_title(tick_labels[idx])
+            ax.set_xticks(x)
+            ax.set_xticklabels(["Deep", "Middle", "Superficial"])
+            ax.set_ylabel("Parcel count - eigenvector centrality \n(± SEM)")
+
+            # annotate each bar with its mean value
+            for bar in bars:
+                h = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h + 0.01*h,  # place above error‐bar
+                    f"{h:.4f}",
+                    ha="center",
+                    va="bottom"
+                )
+
+        plt.tight_layout()
+        plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_EigCentrality_AverageAdj{additionalName}.png", bbox_inches="tight")
+        plt.close(fig)
+
+
+
+        fig, axes = plt.subplots(4, 3, figsize=(12, 16), sharey=True)
+        axes = axes.flatten()
+        for idx, ax in enumerate(axes):
+            # bar positions for the 3 layers
+            x      = np.arange(1, 4)
+            heights= averages[idx, :]
+
+            # draw bars with error‐bars
+            bars = ax.bar(
+                x, heights,
+                capsize=5,
+                edgecolor='black'
+            )
+
+            ax.set_title(tick_labels[idx])
+            ax.set_xticks(x)
+            ax.set_xticklabels(["Deep", "Middle", "Superficial"])
+            ax.set_ylabel("Mean Centrality\n(± SEM)")
+
+            # annotate each bar with its mean value
+            for bar in bars:
+                h = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h + 0.01*h,  # place above error‐bar
+                    f"{h:.4f}",
+                    ha="center",
+                    va="bottom"
+                )
+
+        plt.tight_layout()
+        plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_EigCentrality_Count_AverageAdj{additionalName}.png",
+                    bbox_inches="tight")
+        plt.close(fig)
+
+
+
+    def runDegreeDistribution(self, M, name, layerName):
+
+        G = nx.from_numpy_array(M)
+
+        hist = nx.degree_histogram(G)
+        counts  = np.array(hist)
+
+        # 3. Convert to PMF and then strict CCDF = P(K > k)
+        # ------------------------------------------------
+        N = G.number_of_nodes()
+        p_k = counts / N                     # PMF: P(K = k)
+        F   = np.cumsum(p_k)                 # CDF: F(k) = P(K <= k)
+        ccdf = 1 - F                         # strict CCDF: P(K > k)
+        degrees = np.arange(len(hist))       # 0, 1, 2, …, k_max
+        k = np.arange(len(ccdf)-1)
+
+        comps = nx.number_connected_components(G)
+        print(f"{comps} connected component(s)")
+
+        # 4. Plot on log–log axes
+        # ------------------------------------------------
+        plt.figure(figsize=(6,4))
+        plt.step(k, ccdf[:-1], where='post', marker='o')
+        # plt.step(degrees, ccdf, where='post', marker='o')
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel('Degree $k$ (log scale)')
+        plt.ylabel(r'$1 - F(k) = P(K > k)$ (log scale)')
+        plt.title('Node‐Degree CCDF (NetworkX)')
+        plt.tight_layout()
+        plt.savefig(f"{self.data_dir}/{name}/DegreePlot_{layerName}.png", bbox_inches="tight")
+        plt.close()
+
+    def modularity(self, A, name, layerName):
+
+        labels = np.loadtxt(
+            'cortex_parcel_network_assignments.txt', 
+            dtype=int
+        )
+
+        k = A.sum(axis=1)
+        m2 = k.sum()
+        Q = 0.0
+
+        for c in np.unique(labels):
+            idx = np.where(labels==c)[0]
+            lc = A[np.ix_(idx, idx)].sum()
+            kc = k[idx].sum()
+            Q += (lc/m2) - (kc/m2)**2
+
+        print(f"Modularity in {layerName}: {Q}")
+        return Q

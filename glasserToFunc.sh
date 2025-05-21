@@ -2,7 +2,7 @@
 
 export SUBJECTS_DIR=/Users/karolis/Desktop/highRes_resting/derivatives/freesurfer
 
-subject=sub-03
+subject=sub-99
 refAnatDir=/Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space

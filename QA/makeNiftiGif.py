@@ -7,14 +7,13 @@ from skimage.transform import resize
 from pathlib import Path
 
 studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
-subject = "sub-01"
+subject = "sub-99"
 outputDir = f"/Users/karolis/Desktop/highRes_Resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 
 # Load the NIfTI images
-nii1 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1_in-func.nii").get_fdata()
-#nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/HCP-MM1_in-func.nii").get_fdata()
-nii2 = nib.load(f"{studyDataDir}/derivates/mCAP/{subject}/mCAPs_conv_1_K_2/mCAP_cluster_contrast_2-1.nii").get_fdata()
+nii1 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1.nii").get_fdata()
+nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/mrs_Glu-in_t1_appliedTrans.nii").get_fdata()
 
 #nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/ln_depths_equivol.nii").get_fdata()
 #nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/sub-01_bold_SMSEPI_mc_MEAN_n4_brain.nii").get_fdata()
@@ -60,8 +59,8 @@ nii2_colored_resized = resize(nii2_colored, nii1_rgb.shape, anti_aliasing=True)
 nii2_colored_resized = (nii2_colored_resized * 255).astype(np.uint8)
 
 # Create frames for the GIF
-frames = [nii1_rgb, nii2_colored_resized] * 100  # Flashing effect
-#frames = [nii1_rgb, nii2_rgb] * 100  # Flashing effect
+# frames = [nii1_rgb, nii2_colored_resized] * 100  # Flashing effect
+frames = [nii1_rgb, nii2_rgb] * 100  # Flashing effect
 
 # Save as GIF
-imageio.mimsave(f"{outputDir}/T1_mCAP_K2_contrast.gif", frames, duration=500)  # Adjust duration as needed
+imageio.mimsave(f"{outputDir}/T1_Glu_contrast.gif", frames, duration=500)  # Adjust duration as needed

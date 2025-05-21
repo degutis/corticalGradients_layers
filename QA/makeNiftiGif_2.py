@@ -8,13 +8,13 @@ from pathlib import Path
 
 # Paths to input NIfTI images
 studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
-subject = "sub-01"
+subject = "sub-99"
 outputDir = f"/Users/karolis/Desktop/highRes_Resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 
 # Get image data
-background_data = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1_in-func.nii").get_fdata()
-overlay_data = nib.load(f"{studyDataDir}/derivates/mCAP/{subject}/mCAPs_conv_1_K_2/mCAP_cluster_contrast_2-1.nii").get_fdata()
+background_data = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1.nii").get_fdata()
+overlay_data = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/mrs_GABA-in_t1.nii").get_fdata()
 
 # Choose a middle slice along the z-axis
 slice_idx = background_data.shape[2] // 2
@@ -34,4 +34,4 @@ ax.imshow(overlay_data[:, :, slice_idx], cmap="coolwarm", vmin=vmin, vmax=vmax, 
 ax.axis("off")
 
 
-plt.savefig(f"{outputDir}/T1_mCAP_K2_contrast.png", dpi=300, bbox_inches="tight", pad_inches=0)
+plt.savefig(f"{outputDir}/T1_GABA_contrast.png", dpi=300, bbox_inches="tight", pad_inches=0)

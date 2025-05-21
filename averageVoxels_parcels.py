@@ -105,16 +105,18 @@ def averageVoxels_parcels_with_fs(
     ):
     
     if subject=="sub-01":
-        BOLD_data_path=f"../../highRes_resting/{subject}/func/ses-02/derivatives/merged_residuals_{runNum}.nii"    
-        layer_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ses-02/ln_depths_equivol.nii"
-        atlas_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ses-02/HCP-MMP1_in-func.nii"
+        # BOLD_data_path=f"../highRes_resting/{subject}/func/ses-02/derivatives/merged_residuals_{runNum}.nii"
+        BOLD_data_path = f'../highRes_Resting/{subject}/func/ses-02/derivatives/{subject}_{runNum}_bold_SMSEPI_mc.nii'
+        layer_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/ln_depths_equivol.nii"
+        atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/HCP-MMP1_in-func.nii"
     else:
-        BOLD_data_path=f"../../highRes_resting/{subject}/func/derivatives/merged_residuals_{runNum}.nii"
-        layer_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
-        atlas_path=f"../../highRes_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
+        # BOLD_data_path=f"../highRes_resting/{subject}/func/derivatives/merged_residuals_{runNum}.nii"
+        BOLD_data_path=f"../highRes_resting/{subject}/func/derivatives/{subject}_{runNum}_bold_SMSEPI_mc.nii"
+        layer_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
+        atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
 
-    fs_atlas_path = f"../../highRes_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
-    output_path = f"../../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}/"
+    fs_atlas_path = f"../highRes_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
+    output_path = f"../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}_noPreproc/"
     
     os.makedirs(output_path, exist_ok=True)
 
@@ -193,7 +195,8 @@ def averageVoxels_parcels_with_fs(
                 if np.any(combined_mask):
                     vox_ts    = bold_data[combined_mask]
                     mean_ts   = np.nanmean(vox_ts, axis=0)
-                    out[i, :] = zscore(mean_ts, axis=0)
+                    # out[i, :] = zscore(mean_ts, axis=0)
+                    out[i, :] = mean_ts
                 # else: leave as NaN
             # else: leave as NaN for missing parcels
 
@@ -204,8 +207,27 @@ def averageVoxels_parcels_with_fs(
 
     print("All done.")
 
-averageVoxels_parcels_with_fs("sub-03","run1","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run2","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run3","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run4","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run5","smallGap")
+# averageVoxels_parcels_with_fs("sub-01","run1","noGap")
+# averageVoxels_parcels_with_fs("sub-01","run2","noGap")
+# averageVoxels_parcels_with_fs("sub-01","run3","noGap")
+
+# averageVoxels_parcels_with_fs("sub-02","run1","noGap")
+# averageVoxels_parcels_with_fs("sub-02","run2","noGap")
+# averageVoxels_parcels_with_fs("sub-02","run3","noGap")
+# averageVoxels_parcels_with_fs("sub-02","run4","noGap")
+
+
+averageVoxels_parcels_with_fs("sub-01","run-01","smallGap")
+averageVoxels_parcels_with_fs("sub-01","run-02","smallGap")
+averageVoxels_parcels_with_fs("sub-01","run-03","smallGap")
+
+averageVoxels_parcels_with_fs("sub-02","run-01","smallGap")
+averageVoxels_parcels_with_fs("sub-02","run-02","smallGap")
+averageVoxels_parcels_with_fs("sub-02","run-03","smallGap")
+averageVoxels_parcels_with_fs("sub-02","run-04","smallGap")
+
+averageVoxels_parcels_with_fs("sub-03","run-01","smallGap")
+averageVoxels_parcels_with_fs("sub-03","run-02","smallGap")
+averageVoxels_parcels_with_fs("sub-03","run-03","smallGap")
+averageVoxels_parcels_with_fs("sub-03","run-04","smallGap")
+averageVoxels_parcels_with_fs("sub-03","run-05","smallGap")

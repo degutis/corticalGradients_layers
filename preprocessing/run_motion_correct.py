@@ -35,12 +35,12 @@ func_dir = f"{studyDataDir}/{subject}/func/"
 
 print("Running SMSEPI correction")
 subprocess.run([
-    "bash", "fmri-analysis/library/motioncorrect.sh",
+    "bash", "../fmri-analysis/library/motioncorrect.sh",
     f"{func_dir}/{subject}_run-01_bold_SMSEPI.nii.gz",
-    f"{func_dir}/{subject}_run-02_bold_SMSEPI.nii.gz",
+    # f"{func_dir}/{subject}_run-02_bold_SMSEPI.nii.gz",
     f"{func_dir}/{subject}_run-03_bold_SMSEPI.nii.gz",
-    f"{func_dir}/{subject}_run-04_bold_SMSEPI.nii.gz",
-    f"{func_dir}/{subject}_run-05_bold_SMSEPI.nii.gz"
+    # f"{func_dir}/{subject}_run-04_bold_SMSEPI.nii.gz",
+    # f"{func_dir}/{subject}_run-05_bold_SMSEPI.nii.gz"
 ], check=True)
 
 # print("Running 3D EPI correction")
