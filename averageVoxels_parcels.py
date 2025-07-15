@@ -116,7 +116,7 @@ def averageVoxels_parcels_with_fs(
         atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
 
     fs_atlas_path = f"../highRes_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
-    output_path = f"../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}_noPreproc/"
+    output_path = f"../highRes_resting/derivatives/correlations/{subject}/Multiple_runs/{analysis_type}/"
     
     os.makedirs(output_path, exist_ok=True)
 
@@ -195,9 +195,10 @@ def averageVoxels_parcels_with_fs(
                 if np.any(combined_mask):
                     vox_ts    = bold_data[combined_mask]
                     mean_ts   = np.nanmean(vox_ts, axis=0)
-                    # out[i, :] = zscore(mean_ts, axis=0)
-                    out[i, :] = mean_ts
-                # else: leave as NaN
+                    out[i, :] = zscore(mean_ts, axis=0)
+                    # out[i, :] = mean_ts
+                else:
+                    print(parcel)
             # else: leave as NaN for missing parcels
 
         # Save results per layer
@@ -217,17 +218,19 @@ def averageVoxels_parcels_with_fs(
 # averageVoxels_parcels_with_fs("sub-02","run4","noGap")
 
 
-averageVoxels_parcels_with_fs("sub-01","run-01","smallGap")
-averageVoxels_parcels_with_fs("sub-01","run-02","smallGap")
-averageVoxels_parcels_with_fs("sub-01","run-03","smallGap")
+# averageVoxels_parcels_with_fs("sub-01","run-01","smallGap")
+# averageVoxels_parcels_with_fs("sub-01","run-02","smallGap")
+# averageVoxels_parcels_with_fs("sub-01","run-03","smallGap")
 
-averageVoxels_parcels_with_fs("sub-02","run-01","smallGap")
-averageVoxels_parcels_with_fs("sub-02","run-02","smallGap")
-averageVoxels_parcels_with_fs("sub-02","run-03","smallGap")
-averageVoxels_parcels_with_fs("sub-02","run-04","smallGap")
+# averageVoxels_parcels_with_fs("sub-02","run-01","smallGap")
+# averageVoxels_parcels_with_fs("sub-02","run-02","smallGap")
+# averageVoxels_parcels_with_fs("sub-02","run-03","smallGap")
+# averageVoxels_parcels_with_fs("sub-02","run-04","smallGap")
 
-averageVoxels_parcels_with_fs("sub-03","run-01","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run-02","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run-03","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run-04","smallGap")
-averageVoxels_parcels_with_fs("sub-03","run-05","smallGap")
+# averageVoxels_parcels_with_fs("sub-03","run-01","smallGap")
+# averageVoxels_parcels_with_fs("sub-03","run-02","smallGap")
+# averageVoxels_parcels_with_fs("sub-03","run-03","smallGap")
+# averageVoxels_parcels_with_fs("sub-03","run-04","smallGap")
+# averageVoxels_parcels_with_fs("sub-03","run-05","smallGap")
+
+averageVoxels_parcels_with_fs("sub-50","run-01","smallGap")

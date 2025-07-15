@@ -4,19 +4,19 @@ close all
 spm('Defaults','fmri');  % Initialize SPM
 spm_jobman('initcfg');   % Initialize job manager
 
-TR = 3.22;
+TR = 3.29;
 
-funcDir = fullfile('/Users','karolis','Desktop','highRes_Resting','sub-03','func','derivatives');
+funcDir = fullfile('/Users','karolis','Desktop','highRes_Resting','sub-50','func','derivatives');
 funcFiles = dir(fullfile(funcDir, '*SMSEPI_mc.nii'));
 motionFiles = dir(fullfile(funcDir, '*SMSEPI_mc.par'));
 
-atlas_file = fullfile('/Users','karolis','Desktop','highRes_Resting','derivatives','ref_anat','sub-03','HCP-MMP1_in-func.nii');
+atlas_file = fullfile('/Users','karolis','Desktop','highRes_Resting','derivatives','ref_anat','sub-50','HCP-MMP1_in-func.nii');
 V_a = spm_vol(atlas_file);
 Y_a = spm_read_vols(V_a);     
 
 
 for file = 1:length(funcFiles)
-
+    disp(file)
     timecourse_file = fullfile(fullfile(funcFiles(file).folder, funcFiles(file).name));
     V_t = spm_vol(timecourse_file);
     Y_t = spm_read_vols(V_t);     

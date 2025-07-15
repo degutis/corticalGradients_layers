@@ -115,5 +115,5 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/Users/karolis/Desktop/highRes_Resting"
-    subject = "sub-03"
+    subject = "sub-50"
     process_ref_anat_subject(studyDir, subject)

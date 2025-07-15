@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Paths to input NIfTI images
 studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
-subject = "sub-99"
+subject = "sub-50"
 outputDir = f"/Users/karolis/Desktop/highRes_Resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 

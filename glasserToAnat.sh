@@ -2,7 +2,7 @@
 
 export SUBJECTS_DIR=/Users/karolis/Desktop/highRes_resting/derivatives/freesurfer
 
-subject=sub-99
+subject=sub-50
 refAnatDir=/Users/karolis/Desktop/highRes_Resting/derivatives/ref_anat/${subject}
 funcDir=/Users/karolis/Desktop/highRes_Resting/${subject}/reo/
 

@@ -4,7 +4,15 @@ from sklearn.cluster import AgglomerativeClustering
 from collections import defaultdict
 from scipy import stats
 from scipy.optimize import lsq_linear
+import matplotlib.pyplot as plt
+from brainspace.gradient import GradientMaps
 
+
+def runGradientAnalysis(conn_matrix):
+    gm = GradientMaps(kernel="cosine", approach = "dm")
+    gm.fit(conn_matrix)
+    
+    return gm.gradients_
 
 def runClusterAnalysis(eigvecs_list, threshold=0.3):
 
@@ -339,3 +347,76 @@ def dfa_fast(vdata, istart=None, iend=None, L_all=None, min_L=5, max_frac=0.25, 
         alpha.append(res.x[0])
 
     return alpha,FL_all
+
+def plot_cosine_similarity(cosineSim, data_dir, name, thresholds, extraName='CosineSimilarityAcrossThresholds§', labels=None, ylabel='Cosine Similarity', ):
+    """
+    Plot mean cosine similarity across thresholds with SEM shading.
+
+    Parameters
+    ----------
+    cosineSim : np.ndarray
+        Array of shape (nComparisons, nSubjects, nThresh) containing cosine similarity values.
+    thresholds : array-like, optional
+        Sequence of threshold values (e.g., np.arange(70, 100)). If None, defaults to 70-99.
+    labels : list of str, optional
+        Labels for each comparison line. If None, generic labels are used.
+
+    Raises
+    ------
+    ValueError
+        If the length of thresholds does not match the third dimension of cosineSim.
+    """
+    # Default thresholds 70-99 if not provided
+    
+    nComparisons, nSubjects, nThresh = cosineSim.shape
+    
+    # Validate thresholds length
+    if len(thresholds) != nThresh:
+        raise ValueError(f"Expected thresholds of length {nThresh}, got {len(thresholds)}.")
+
+    # Default labels if none provided
+    if labels is None:
+        labels = [f'Comparison {i+1}' for i in range(nComparisons)]
+        labels = ["Deep vs. Middle", "Deep vs. Superficial", "Superficial vs. Middle"]
+
+    mean_sim = cosineSim.mean(axis=1)
+    sem_sim = cosineSim.std(axis=1, ddof=1) / np.sqrt(nSubjects)
+    
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    for i in range(nComparisons):
+        plt.plot(thresholds, mean_sim[i], label=labels[i])
+        plt.fill_between(thresholds, 
+                         mean_sim[i] - sem_sim[i], 
+                         mean_sim[i] + sem_sim[i], 
+                         alpha=0.2)
+    
+    plt.xlabel('Threshold (%)')
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{data_dir}/{name}/{extraName}.png", bbox_inches="tight")
+    plt.close()
+
+
+def cosine_similarity_upper(mat1: np.ndarray, mat2: np.ndarray) -> float:
+
+    if mat1.shape != mat2.shape:
+        raise ValueError(f"Matrix shapes must match, got {mat1.shape} and {mat2.shape}")
+    if mat1.ndim != 2 or mat1.shape[0] != mat1.shape[1]:
+        raise ValueError(f"Matrices must be square, but got shape {mat1.shape}")
+    
+    # Extract upper-triangular indices without the diagonal
+    iu = np.triu_indices(mat1.shape[0], k=1)
+    
+    # Vectorize the upper-triangular parts
+    v1 = mat1[iu]
+    v2 = mat2[iu]
+    
+    # Compute cosine similarity
+    dot = np.dot(v1, v2)
+    norm_prod = np.linalg.norm(v1) * np.linalg.norm(v2)
+    if norm_prod == 0:
+        return 0.0  # or np.nan, depending on desired behavior
+    return dot / norm_prod

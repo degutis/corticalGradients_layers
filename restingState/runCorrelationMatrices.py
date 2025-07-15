@@ -13,11 +13,11 @@ import hcp_utils as hcp
 
 
 
-data_dir = '../highRes_resting/derivatives/correlations/sub-01/Gap_thresh50'
+data_dir = '../highRes_resting/derivatives/correlations/sub-50/SmallGap'
 npy_files = [f for f in os.listdir(data_dir) if f.endswith(".npy")]
 npy_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".npy")])
 N = 360
-setThresh = 50
+setThresh = 90
 adj_matrix_full = np.empty((N,N,3))
 
 all_series = []

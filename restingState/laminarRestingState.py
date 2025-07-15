@@ -17,6 +17,11 @@ from scipy.signal import resample
 from tqdm import tqdm
 from collections import Counter
 from scipy.stats import f_oneway
+from matplotlib.lines import Line2D
+from matplotlib.colors import ListedColormap
+from sklearn.metrics import silhouette_score
+
+
 
 
 
@@ -31,9 +36,168 @@ class LaminarRestingState:
         self.npy_files = [f for f in os.listdir(data_dir) if f.endswith(".npy")]
         self.npy_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".npy")])
       
-    def plotReliability(self, TR=3.2, reference_minutes=4, min_test_minutes=2, n_iterations=500):
+    # def plotReliability(self, TR=3.2, reference_minutes=4, min_test_minutes=2, n_iterations=500):
+    #     """
+    #     Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers.
+    #     """
+    #     # how many volumes in one minute
+    #     volumes_per_minute = int(round(60.0 / TR))
+
+    #     # --- 1) collect layer‐grouped file lists ---
+    #     npy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
+    #     layer_groups = defaultdict(list)
+    #     for fname in npy_files:
+    #         try:
+    #             layer_num = int(fname.split('_')[-1].replace('.npy',''))
+    #         except Exception as e:
+    #             raise ValueError(f"Could not extract layer number from filename: {fname}") from e
+    #         layer_groups[layer_num].append(os.path.join(self.data_dir, fname))
+
+    #     reliability_results = {}
+
+    #     # --- 2) per‐layer curves (as before) ---
+    #     for layer_num in sorted(layer_groups):
+    #         files = layer_groups[layer_num]
+    #         print(f"\nLayer {layer_num}: {len(files)} run(s)")
+
+    #         # load+concat runs → data: [360 parcels, total_timepoints]
+    #         runs = [np.load(fp) for fp in files]
+    #         data = np.concatenate(runs, axis=1)
+    #         n_parcels, total_vols = data.shape
+    #         total_mins = total_vols // volumes_per_minute
+    #         print(f"  total_vols={total_vols}, total_mins={total_mins}")
+
+    #         if total_mins < reference_minutes + min_test_minutes:
+    #             print(f"  skip (need ≥{reference_minutes+min_test_minutes} min)")
+    #             continue
+
+    #         # pre‐compute FC upper‐triangle indices
+    #         iu = np.triu_indices(n_parcels, k=1)
+    #         layer_curve = []
+
+    #         for tmin in tqdm(range(min_test_minutes, total_mins - reference_minutes +1),
+    #                         desc=f"Layer {layer_num}"):
+    #             test_vols = tmin * volumes_per_minute
+    #             ref_vols  = reference_minutes * volumes_per_minute
+    #             corrs = []
+
+    #             for _ in range(n_iterations):
+    #                 # sample reference segment
+    #                 sr = np.random.randint(0, total_vols - ref_vols +1)
+    #                 ref_seg = data[:, sr:sr+ref_vols]
+    #                 # sample test segment
+    #                 st = np.random.randint(0, total_vols - test_vols +1)
+    #                 test_seg = data[:, st:st+test_vols]
+
+    #                 # resample if lengths differ
+    #                 if test_seg.shape[1] != ref_seg.shape[1]:
+    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+
+    #                 # compute FCs and flatten
+    #                 ref_fc  = np.corrcoef(ref_seg)
+    #                 test_fc = np.corrcoef(test_seg)
+    #                 rvals = ref_fc[iu]
+    #                 tvals = test_fc[iu]
+
+    #                 # drop NaNs
+    #                 valid = ~np.isnan(rvals)&~np.isnan(tvals)
+    #                 if valid.sum() < 2:
+    #                     continue
+
+    #                 # corr of the two FC‐vectors
+    #                 r = np.corrcoef(rvals[valid], tvals[valid])[0,1]
+    #                 corrs.append(r)
+
+    #             layer_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
+
+    #         reliability_results[layer_num] = layer_curve
+
+    #     # --- 3) ALL‐layers curve ---
+    #     # group by run‐ID so that within‐run time‐axes align
+    #     run_groups = defaultdict(list)
+    #     for files in layer_groups.values():
+    #         for fp in files:
+    #             run_id = os.path.basename(fp).split('_')[1]   # e.g. 'run2'
+    #             run_groups[run_id].append(fp)
+
+    #     data_runs = []
+    #     for run_id, fps in run_groups.items():
+    #         # sort layers by layer‐number to keep row‐order consistent
+    #         fps_sorted = sorted(fps, key=lambda x: int(os.path.basename(x).split('_')[-1].replace('.npy','')))
+    #         arrs = [np.load(fp) for fp in fps_sorted]
+    #         # check all have same timepoints
+    #         T0 = arrs[0].shape[1]
+    #         if any(a.shape[1]!=T0 for a in arrs):
+    #             raise ValueError(f"Run {run_id} has mismatched timepoints across layers")
+    #         # stack parcels from every layer → shape [360 × n_layers, T0]
+    #         data_runs.append(np.vstack(arrs))
+
+    #     # now concat across runs → data_all [360 × n_layers, total_vols_all]
+    #     data_all = np.concatenate(data_runs, axis=1)
+    #     n_all, total_vols_all = data_all.shape
+    #     total_mins_all = total_vols_all // volumes_per_minute
+    #     print(f"\nALL‐LAYERS: parcels={n_all}, total_vols={total_vols_all}, total_mins={total_mins_all}")
+
+    #     if total_mins_all >= reference_minutes + min_test_minutes:
+    #         iu_all = np.triu_indices(n_all, k=1)
+    #         all_curve = []
+
+    #         for tmin in tqdm(range(min_test_minutes, total_mins_all - reference_minutes +1),
+    #                         desc="ALL‐LAYERS"):
+    #             test_vols = tmin * volumes_per_minute
+    #             ref_vols  = reference_minutes * volumes_per_minute
+    #             corrs = []
+
+    #             for _ in range(n_iterations):
+    #                 # sample segments
+    #                 sr = np.random.randint(0, total_vols_all - ref_vols +1)
+    #                 ref_seg = data_all[:, sr:sr+ref_vols]
+    #                 st = np.random.randint(0, total_vols_all - test_vols +1)
+    #                 test_seg = data_all[:, st:st+test_vols]
+
+    #                 if test_seg.shape[1] != ref_seg.shape[1]:
+    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+
+    #                 ref_fc  = np.corrcoef(ref_seg)
+    #                 test_fc = np.corrcoef(test_seg)
+    #                 rv, tv = ref_fc[iu_all], test_fc[iu_all]
+    #                 valid = ~np.isnan(rv)&~np.isnan(tv)
+    #                 if valid.sum() < 2:
+    #                     continue
+    #                 r = np.corrcoef(rv[valid], tv[valid])[0,1]
+    #                 corrs.append(r)
+
+    #             all_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
+
+    #         reliability_results['all'] = all_curve
+    #     else:
+    #         print("Not enough data to compute ALL‐LAYERS curve.")
+
+    #     # --- 4) Plot everything ---
+    #     plt.figure(figsize=(10,6))
+    #     for key, curve in sorted(reliability_results.items(), key=lambda x: str(x[0])):
+    #         mins, rs = zip(*curve)
+    #         label = 'All layers' if key=='all' else f'Layer {key}'
+    #         plt.plot(mins, rs, marker='o', label=label)
+        
+    #     plt.ylim(0, 1)
+    #     plt.xlabel('Test window length (minutes)')
+    #     plt.ylabel(f'Mean FC‐matrix corr (ref={reference_minutes} min)')
+    #     plt.title('Within‐subject FC reliability vs. time')
+    #     plt.grid(True)
+    #     plt.legend()
+    #     plt.tight_layout()
+
+    #     outpath = os.path.join(self.data_dir, 'Reliability_FC_all.png')
+    #     plt.savefig(outpath, bbox_inches='tight')
+    #     plt.close()
+    #     print(f"Saved combined plot to {outpath}")
+
+    def plotReliability(self, TR=3.2, min_minutes=1, n_iterations=500):
         """
-        Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers.
+        Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers,
+        using matched‐window design: for each window length tmin, sample two independent
+        segments of tmin minutes each.
         """
         # how many volumes in one minute
         volumes_per_minute = int(round(60.0 / TR))
@@ -50,57 +214,53 @@ class LaminarRestingState:
 
         reliability_results = {}
 
-        # --- 2) per‐layer curves (as before) ---
+        # --- 2) per‐layer curves ---
         for layer_num in sorted(layer_groups):
             files = layer_groups[layer_num]
             print(f"\nLayer {layer_num}: {len(files)} run(s)")
 
-            # load+concat runs → data: [360 parcels, total_timepoints]
+            # load + concat runs → data: [n_parcels, total_timepoints]
             runs = [np.load(fp) for fp in files]
             data = np.concatenate(runs, axis=1)
             n_parcels, total_vols = data.shape
             total_mins = total_vols // volumes_per_minute
             print(f"  total_vols={total_vols}, total_mins={total_mins}")
 
-            if total_mins < reference_minutes + min_test_minutes:
-                print(f"  skip (need ≥{reference_minutes+min_test_minutes} min)")
+            if total_mins < 2 * min_minutes:
+                print(f"  skip (need ≥{2*min_minutes} min total)")
                 continue
 
-            # pre‐compute FC upper‐triangle indices
             iu = np.triu_indices(n_parcels, k=1)
             layer_curve = []
 
-            for tmin in tqdm(range(min_test_minutes, total_mins - reference_minutes +1),
+            # tmin is the length (minutes) of each of the two windows
+            for tmin in tqdm(range(min_minutes, total_mins // 2 + 1),
                             desc=f"Layer {layer_num}"):
-                test_vols = tmin * volumes_per_minute
-                ref_vols  = reference_minutes * volumes_per_minute
+                win_vols = tmin * volumes_per_minute
                 corrs = []
 
                 for _ in range(n_iterations):
-                    # sample reference segment
-                    sr = np.random.randint(0, total_vols - ref_vols +1)
-                    ref_seg = data[:, sr:sr+ref_vols]
-                    # sample test segment
-                    st = np.random.randint(0, total_vols - test_vols +1)
-                    test_seg = data[:, st:st+test_vols]
+                    # sample two independent segments of length win_vols
+                    start1 = np.random.randint(0, total_vols - win_vols + 1)
+                    seg1 = data[:, start1:start1+win_vols]
 
-                    # resample if lengths differ
-                    if test_seg.shape[1] != ref_seg.shape[1]:
-                        test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+                    start2 = np.random.randint(0, total_vols - win_vols + 1)
+                    seg2 = data[:, start2:start2+win_vols]
 
-                    # compute FCs and flatten
-                    ref_fc  = np.corrcoef(ref_seg)
-                    test_fc = np.corrcoef(test_seg)
-                    rvals = ref_fc[iu]
-                    tvals = test_fc[iu]
+                    # if by chance lengths differ (edge cases), resample
+                    if seg1.shape[1] != seg2.shape[1]:
+                        seg2 = resample(seg2, seg1.shape[1], axis=1)
 
-                    # drop NaNs
-                    valid = ~np.isnan(rvals)&~np.isnan(tvals)
+                    # compute FCs and extract upper‐triangle
+                    fc1 = np.corrcoef(seg1)
+                    fc2 = np.corrcoef(seg2)
+                    v1, v2 = fc1[iu], fc2[iu]
+
+                    valid = ~np.isnan(v1) & ~np.isnan(v2)
                     if valid.sum() < 2:
                         continue
 
-                    # corr of the two FC‐vectors
-                    r = np.corrcoef(rvals[valid], tvals[valid])[0,1]
+                    r = np.corrcoef(v1[valid], v2[valid])[0,1]
                     corrs.append(r)
 
                 layer_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
@@ -108,58 +268,58 @@ class LaminarRestingState:
             reliability_results[layer_num] = layer_curve
 
         # --- 3) ALL‐layers curve ---
-        # group by run‐ID so that within‐run time‐axes align
+        # group by run so that timepoints align across layers
         run_groups = defaultdict(list)
-        for files in layer_groups.values():
-            for fp in files:
-                run_id = os.path.basename(fp).split('_')[1]   # e.g. 'run2'
+        for fps in layer_groups.values():
+            for fp in fps:
+                run_id = os.path.basename(fp).split('_')[1]  # e.g. 'run2'
                 run_groups[run_id].append(fp)
 
         data_runs = []
         for run_id, fps in run_groups.items():
-            # sort layers by layer‐number to keep row‐order consistent
-            fps_sorted = sorted(fps, key=lambda x: int(os.path.basename(x).split('_')[-1].replace('.npy','')))
+            fps_sorted = sorted(
+                fps,
+                key=lambda x: int(os.path.basename(x).split('_')[-1].replace('.npy',''))
+            )
             arrs = [np.load(fp) for fp in fps_sorted]
-            # check all have same timepoints
             T0 = arrs[0].shape[1]
-            if any(a.shape[1]!=T0 for a in arrs):
+            if any(a.shape[1] != T0 for a in arrs):
                 raise ValueError(f"Run {run_id} has mismatched timepoints across layers")
-            # stack parcels from every layer → shape [360 × n_layers, T0]
+            # stack parcels across layers
             data_runs.append(np.vstack(arrs))
 
-        # now concat across runs → data_all [360 × n_layers, total_vols_all]
         data_all = np.concatenate(data_runs, axis=1)
         n_all, total_vols_all = data_all.shape
         total_mins_all = total_vols_all // volumes_per_minute
         print(f"\nALL‐LAYERS: parcels={n_all}, total_vols={total_vols_all}, total_mins={total_mins_all}")
 
-        if total_mins_all >= reference_minutes + min_test_minutes:
+        if total_mins_all >= 2 * min_minutes:
             iu_all = np.triu_indices(n_all, k=1)
             all_curve = []
 
-            for tmin in tqdm(range(min_test_minutes, total_mins_all - reference_minutes +1),
+            for tmin in tqdm(range(min_minutes, total_mins_all // 2 + 1),
                             desc="ALL‐LAYERS"):
-                test_vols = tmin * volumes_per_minute
-                ref_vols  = reference_minutes * volumes_per_minute
+                win_vols = tmin * volumes_per_minute
                 corrs = []
 
                 for _ in range(n_iterations):
-                    # sample segments
-                    sr = np.random.randint(0, total_vols_all - ref_vols +1)
-                    ref_seg = data_all[:, sr:sr+ref_vols]
-                    st = np.random.randint(0, total_vols_all - test_vols +1)
-                    test_seg = data_all[:, st:st+test_vols]
+                    s1 = np.random.randint(0, total_vols_all - win_vols + 1)
+                    seg1 = data_all[:, s1:s1+win_vols]
+                    s2 = np.random.randint(0, total_vols_all - win_vols + 1)
+                    seg2 = data_all[:, s2:s2+win_vols]
 
-                    if test_seg.shape[1] != ref_seg.shape[1]:
-                        test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
+                    if seg1.shape[1] != seg2.shape[1]:
+                        seg2 = resample(seg2, seg1.shape[1], axis=1)
 
-                    ref_fc  = np.corrcoef(ref_seg)
-                    test_fc = np.corrcoef(test_seg)
-                    rv, tv = ref_fc[iu_all], test_fc[iu_all]
-                    valid = ~np.isnan(rv)&~np.isnan(tv)
+                    fc1 = np.corrcoef(seg1)
+                    fc2 = np.corrcoef(seg2)
+                    v1, v2 = fc1[iu_all], fc2[iu_all]
+
+                    valid = ~np.isnan(v1) & ~np.isnan(v2)
                     if valid.sum() < 2:
                         continue
-                    r = np.corrcoef(rv[valid], tv[valid])[0,1]
+
+                    r = np.corrcoef(v1[valid], v2[valid])[0,1]
                     corrs.append(r)
 
                 all_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
@@ -174,19 +334,20 @@ class LaminarRestingState:
             mins, rs = zip(*curve)
             label = 'All layers' if key=='all' else f'Layer {key}'
             plt.plot(mins, rs, marker='o', label=label)
-        
+
         plt.ylim(0, 1)
-        plt.xlabel('Test window length (minutes)')
-        plt.ylabel(f'Mean FC‐matrix corr (ref={reference_minutes} min)')
-        plt.title('Within‐subject FC reliability vs. time')
+        plt.xlabel('Window length (minutes)')
+        plt.ylabel('Mean FC‐matrix corr')
+        plt.title('Within‐subject FC reliability vs. data amount (matched windows)')
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
 
-        outpath = os.path.join(self.data_dir, 'Reliability_FC_all.png')
+        outpath = os.path.join(self.data_dir, 'Reliability_FC_matched.png')
         plt.savefig(outpath, bbox_inches='tight')
         plt.close()
         print(f"Saved combined plot to {outpath}")
+
 
     def get_adj_matrix_withinLayers(self):
         
@@ -194,7 +355,7 @@ class LaminarRestingState:
 
         for i, file in enumerate(self.npy_files):
 
-            print("Working on file: ", file)
+            # print("Working on file: ", file)
 
             file_path = os.path.join(self.data_dir, file)
             time_series = np.load(file_path)
@@ -223,7 +384,6 @@ class LaminarRestingState:
         layer_groups = defaultdict(list)
         
         for file in self.npy_files:
-            print(file)
             try:
                 layer_str = file.split('_')[-1].replace('.npy', '')
                 layer_num = int(layer_str)
@@ -236,7 +396,7 @@ class LaminarRestingState:
         adj_matrix_within_noThresh = np.empty((self.N,self.N,self.num_layers))
 
         for i, (layer_num, files) in enumerate(sorted_layers):
-            print(f"Processing Layer {layer_num} with {len(files)} run(s)")
+            # print(f"Processing Layer {layer_num} with {len(files)} run(s)")
             all_time_series = []
 
             for file in files:
@@ -245,7 +405,7 @@ class LaminarRestingState:
                 all_time_series.append(time_series)
 
             concatenated = np.concatenate(all_time_series, axis=1)
-            print(f"Concatenated shape: {concatenated.shape}")
+            # print(f"Concatenated shape: {concatenated.shape}")
 
             # Compute correlation
             corr_matrix = np.corrcoef(concatenated)
@@ -310,7 +470,6 @@ class LaminarRestingState:
         layer_groups = defaultdict(list)
         
         for file in self.npy_files:
-            print(file)
             try:
                 layer_str = file.split('_')[-1].replace('.npy', '')
                 layer_num = int(layer_str)
@@ -360,7 +519,7 @@ class LaminarRestingState:
         return np.abs(adj_matrix)
 
 
-    def runLaplacianEmbedding(self, M, name, num_components=10, epsilon = 1e-10, convert_to_binary=True, full=False, addName='', vMax=0.4):
+    def runLaplacianEmbedding(self, M, name, num_components=10, epsilon = 1e-10, convert_to_binary=True, full=False, addName='', vMax=1):
         
         self.num_components = num_components
         self.addName = addName
@@ -383,7 +542,7 @@ class LaminarRestingState:
         laplacian_matrix = degree_matrix - M  # Unnormalized Laplacian
         D_inv_sqrt = np.diag(1.0 / np.sqrt(np.sum(M, axis=1) + epsilon))  # Add small value to avoid division by zero
         L_norm = D_inv_sqrt @ laplacian_matrix @ D_inv_sqrt  # Normalized Laplacian
-        
+
         if full:
             eigvals, eigvecs = scipy.linalg.eigh(L_norm)
             self.num_components = len(eigvals)
@@ -435,7 +594,7 @@ class LaminarRestingState:
         plt.close()
 
 
-    def plotTwoDimEmbedding(self, eigvecs, name, eigvecs_to_plot=[1, 2]):
+    def plotTwoDimEmbedding_old(self, eigvecs, name, eigvecs_to_plot=[1, 2]):
 
         colors = np.repeat([0, 1, 2], self.N)
         cmap = ListedColormap(['red', 'orange', 'purple'])
@@ -460,6 +619,182 @@ class LaminarRestingState:
         plt.close()
 
 
+    def plotTwoDimEmbedding(self,
+                            eigvecs,
+                            name,
+                            eigvecs_to_plot=(1, 2),
+                            layer_labels=None,
+                            network_labels=None,
+                            network_cmap='tab20'):
+        
+        # --- load networks from file (1–12 → 0–11) ---
+        cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)
+        networks0 = cats0 - 1
+        networks = np.tile(networks0, 3)
+
+        layers = np.repeat([0, 1, 2], self.N)
+
+        # --- default labels/colors ---
+        if layer_labels is None:
+            layer_labels = ['Superficial', 'Middle', 'Deep']
+        if network_labels is None:
+            network_labels = [
+                "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+                "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+                "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
+            ]
+        base_cmap = plt.get_cmap(network_cmap, len(network_labels))
+        network_colors = [base_cmap(i) for i in range(len(network_labels))]
+
+        x_dim, y_dim = eigvecs_to_plot[0], eigvecs_to_plot[1]
+
+        # --- shapes for layers ---
+        shapes = ['o', 's', '^']
+
+        plt.figure(figsize=(8, 6))
+        for lyr in np.unique(layers):
+            for net in np.unique(networks):
+                mask = (layers == lyr) & (networks == net)
+                if not np.any(mask):
+                    continue
+                plt.scatter(
+                    eigvecs[mask, x_dim],
+                    eigvecs[mask, y_dim],
+                    marker=shapes[int(lyr)],
+                    facecolor=network_colors[int(net)],
+                    edgecolor='k',
+                    alpha=0.7
+                )
+
+        plt.xlabel(f'Eigenvector {eigvecs_to_plot[0]+1}')
+        plt.ylabel(f'Eigenvector {eigvecs_to_plot[1]+1}')
+        plt.title('Laplacian Embedding (Normalized)')
+
+        # --- legend for layers (shapes) ---
+        layer_handles = [
+            Line2D([0], [0],
+                marker=shapes[i],
+                color='w',
+                markeredgecolor='k',
+                markersize=10,
+                label=layer_labels[i])
+            for i in np.unique(layers)
+        ]
+        # --- legend for networks (colors) ---
+        network_handles = [
+            Line2D([0], [0],
+                marker='o',
+                color='w',
+                markerfacecolor=network_colors[i],
+                markeredgecolor='k',
+                markersize=10,
+                label=network_labels[i])
+            for i in np.unique(networks)
+        ]
+
+        leg1 = plt.legend(handles=layer_handles, title='Layer', loc='upper right')
+        plt.gca().add_artist(leg1)
+        plt.legend(handles=network_handles,
+                title='RSN',
+                bbox_to_anchor=(1.3, 1),
+                loc='upper left')
+
+        plt.tight_layout()
+        eigstr = f"{eigvecs_to_plot[0]}{eigvecs_to_plot[1]}"
+        outpath = f"{self.data_dir}/{name}/Laplacian_embedding_withNetworks_{eigstr}.png"
+        plt.savefig(outpath, bbox_inches='tight')
+        plt.close()
+        print("Saved embedding plot to:", outpath)
+
+
+    def plotTwoDimEmbedding_byNetwork(self,
+                                    eigvecs,
+                                    name,
+                                    eigvecs_to_plot=(1, 2),   # 0-based dims
+                                    layer_labels=None,
+                                    network_labels=None,
+                                    network_cmap='tab20'):
+        # infer dims & parcel count
+        x_dim, y_dim = eigvecs_to_plot
+        P3, _ = eigvecs.shape
+        P = P3 // 3
+
+        # load & tile networks
+        cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)
+        networks0 = cats0 - 1
+        networks = np.tile(networks0, 3)            # length 3P
+
+        # build layers
+        layers = np.repeat([0,1,2], P)             # length 3P
+
+        # defaults
+        if layer_labels is None:
+            layer_labels = ['Superficial','Middle','Deep']
+        if network_labels is None:
+            network_labels = [
+                "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+            ]
+
+        # get 12 colors
+        base_cmap = plt.get_cmap(network_cmap, len(network_labels))
+        network_colors = [base_cmap(i) for i in range(len(network_labels))]
+
+        coords2d = eigvecs[:, [x_dim, y_dim]]
+        
+        # set up subplots
+        fig, axes = plt.subplots(3, 4, figsize=(16, 12), sharex=True, sharey=True)
+        axes = axes.flatten()
+
+        shapes = ['o','s','^']
+        for net in range(len(network_labels)):
+            ax = axes[net]
+            mask_net = (networks == net)
+
+            net_coords = coords2d[mask_net]
+            net_layers = layers[mask_net]
+
+            # compute silhouette score if possible
+            if len(np.unique(net_layers)) > 1:
+                sil_score = silhouette_score(net_coords, net_layers)
+            else:
+                sil_score = np.nan
+
+            for lyr in [0,1,2]:
+                mask = mask_net & (layers == lyr)
+                if not mask.any():
+                    continue
+                ax.scatter(
+                    eigvecs[mask, x_dim],
+                    eigvecs[mask, y_dim],
+                    marker=shapes[lyr],
+                    facecolor=network_colors[net],
+                    edgecolor='k',
+                    alpha=0.7,
+                    label=layer_labels[lyr]
+                )
+
+            title = f"{network_labels[net]}\nSilhouette = {sil_score:.2f}"
+            ax.set_title(title, fontsize=10)
+            ax.set_xlabel(f'EV {x_dim+1}')
+            ax.set_ylabel(f'EV {y_dim+1}')
+
+            if net == 0:
+                ax.legend(title='Layer', loc='best')
+
+        for ax in axes[len(network_labels):]:
+            ax.axis('off')
+
+        plt.tight_layout()
+        eigstr = f"{x_dim}{y_dim}"
+        outpath = f"{self.data_dir}/{name}/Laplacian_embedding_byNetwork_{eigstr}.png"
+        plt.savefig(outpath, bbox_inches='tight')
+        plt.close()
+
+
+
+
     def eigvecs_to_nifti(self, eigvecs, name, hcp_atlas=True, force_run=True, scaleEigVecs=False):
         
         if scaleEigVecs:
@@ -482,10 +817,10 @@ class LaminarRestingState:
 
         total_regions = eigvecs.shape[0]  # Total number of nodes
         num_components = eigvecs.shape[1] # Number of eigenvectors
-        threshold = 80  
+        threshold = 40  
 
         if num_components > threshold:
-            indices = list(range(60)) + list(range(num_components - 20, num_components))
+            indices = list(range(20)) + list(range(num_components - 20, num_components))
         else:
             indices = list(range(num_components))
 
@@ -499,7 +834,6 @@ class LaminarRestingState:
 
         # Loop through eigenvector dimensions
         for i in indices:  
-            print(i)
             if force_run or not os.path.exists(f"{self.data_dir}/{name}/eigenvector_layers"):
 
                 os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers{self.addName}", exist_ok=True)  # Create folder for layer-wise maps
@@ -533,7 +867,7 @@ class LaminarRestingState:
 
         print("All brain maps saved successfully!")
 
-    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, cm = "RdBu", noSubcortical=True, titles=["Deep","Middle","Superficial","Average"], folder_name="eigenvector_layers"):
+    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, vmin=None, vmax=None, cm = "RdBu_r", noSubcortical=True, titles=["Deep","Middle","Superficial","Average"], folder_name="eigenvector_layers"):
 
         os.makedirs(f"{self.data_dir}/{name}/{folder_name}", exist_ok=True)  # Create folder for layer-wise maps
 
@@ -547,13 +881,13 @@ class LaminarRestingState:
             print(f'Zeros to add: {zeros_to_add}')
             Xp = np.concatenate((Xp, np.zeros((zeros_to_add, Xp.shape[1]))), axis=0)    
 
-        orientations = ["lateral", "medial", "lateral", "medial"]
+        orientations = ["lateral", "medial", "medial", "lateral"]
 
         # Determine the global min and max values across all layers
         all_data = np.hstack([hcp.cortex_data(hcp.unparcellate(Xp[:, i], hcp.mmp)) for i in range(Xp.shape[1])])
-        vmin, vmax = np.nanpercentile(all_data, [2, 98])  #np.min(all_data), np.max(all_data)
-        vmin, vmax = 0.3, 1.1
-
+        if vmin is None or vmax is None:
+            vmin, vmax = np.nanpercentile(all_data, [2, 98])  #np.min(all_data), np.max(all_data)
+        
         # Create a figure with multiple rows and shared colorbar
         fig, axes = plt.subplots(
             Xp.shape[1], len(orientations),
@@ -622,6 +956,7 @@ class LaminarRestingState:
         fig.colorbar(norm, cax=cbar_ax)
 
         plt.suptitle(f"Eigenvector {eigValue}", fontsize=16)
+        print(f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png")
         plt.savefig(f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png", facecolor="white")
         plt.close()
 
@@ -692,8 +1027,6 @@ class LaminarRestingState:
 
         n_ROI = U.shape[0]  # Number of regions (nodes)
         wZC = np.zeros(U.shape[1])  # Initialize zero-crossing count array
-        print(n_ROI)
-        print(U.shape[1])
         for u in range(U.shape[1]):  # Loop through each eigenvector
             summ = 0  # Initialize sum            
             for i in range(n_ROI - 1):  # Loop through each connection
@@ -890,36 +1223,93 @@ class LaminarRestingState:
         edges = [(triu_indices[0][i], triu_indices[1][i]) for i in top_k_indices]
         return edges
 
-    def calculateRichClub(self, connectivity_matrix, name, layer, threshold=95):
+    # def calculateRichClub(self, connectivity_matrix, name, layer, threshold=95):
 
-        os.makedirs(f"{self.data_dir}/{name}/NetworkMeasures", exist_ok=True)  # Create folder for layer-wise maps
+    #     os.makedirs(f"{self.data_dir}/{name}/NetworkMeasures", exist_ok=True)  # Create folder for layer-wise maps
 
-        threshold = np.percentile(np.abs(connectivity_matrix), threshold)
-        abs_corr_thresh = np.where(np.abs(connectivity_matrix) >= threshold, np.abs(connectivity_matrix), 0)
+    #     threshold = np.percentile(np.abs(connectivity_matrix), threshold)
+    #     abs_corr_thresh = np.where(np.abs(connectivity_matrix) >= threshold, np.abs(connectivity_matrix), 0)
         
-        G = nx.from_numpy_array(abs_corr_thresh)
+    #     G = nx.from_numpy_array(abs_corr_thresh)
 
-        rich_club_coeffs = nx.rich_club_coefficient(G, normalized=False, seed=33)
+    #     rich_club_coeffs = nx.rich_club_coefficient(G, normalized=False, seed=33)
 
-        plt.plot(list(rich_club_coeffs.keys()), list(rich_club_coeffs.values()))
-        plt.xlabel('Degree k')
-        plt.ylabel('Rich Club Coefficient φ(k)')
-        plt.title('Rich Club Coefficient Curve (Weighted)')
-        plt.grid(True)
-        plt.savefig(f"{self.data_dir}/{name}/NetworkMeasures/RichClub_{layer}.png", bbox_inches="tight")
-        plt.close()
+    #     plt.plot(list(rich_club_coeffs.keys()), list(rich_club_coeffs.values()))
+    #     plt.xlabel('Degree k')
+    #     plt.ylabel('Rich Club Coefficient φ(k)')
+    #     plt.title('Rich Club Coefficient Curve (Weighted)')
+    #     plt.grid(True)
+    #     plt.savefig(f"{self.data_dir}/{name}/NetworkMeasures/RichClub_{layer}.png", bbox_inches="tight")
+    #     plt.close()
 
-        # Optional: Identify high-degree nodes (e.g., top 5%) as potential rich club members
-        degrees = dict(G.degree())
-        cutoff = np.percentile(list(degrees.values()), 95)
-        rich_club_nodes = [n for n, deg in degrees.items() if deg >= cutoff]
+    #     # Optional: Identify high-degree nodes (e.g., top 5%) as potential rich club members
+    #     degrees = dict(G.degree())
+    #     cutoff = np.percentile(list(degrees.values()), 95)
+    #     rich_club_nodes = [n for n, deg in degrees.items() if deg >= cutoff]
 
-        # Save to a text file
-        with open(f"{self.data_dir}/{name}/NetworkMeasures/RichClubNodes_{layer}.txt", 'w') as f:
-            for node in rich_club_nodes:
-                f.write(f"{node}\n")
+    #     # Save to a text file
+    #     with open(f"{self.data_dir}/{name}/NetworkMeasures/RichClubNodes_{layer}.txt", 'w') as f:
+    #         for node in rich_club_nodes:
+    #             f.write(f"{node}\n")
 
-        return rich_club_nodes
+    #     return rich_club_nodes
+
+    def rich_club_sweep(self,
+                        connectivity_matrix: np.ndarray,
+                        deg_cutoff_percentile: float = 95,
+                        normalized: bool = True,
+                        seed: int = 33):
+        """
+        Build a weighted graph,
+        compute (optionally normalized) rich-club coefficients φ(k), then
+        summarize them via AUC and pick the top-degree nodes.
+        
+        Returns
+        -------
+        phi_auc : float
+            Area under the φ(k) vs. k curve for this threshold.
+        rich_club_nodes : List[int]
+            Node indices whose degree ≥ the deg_cutoff_percentile of the degree distribution.
+        """
+
+        G = nx.from_numpy_array(connectivity_matrix)
+        phi_raw = nx.rich_club_coefficient(G, normalized=False)
+        
+        if normalized:
+            # compute null model φ_rand(k)
+            phi_rand = nx.rich_club_coefficient(G, normalized=False, seed=seed)
+            # safe normalization
+            phi = {}
+            for k, v in phi_raw.items():
+                denom = phi_rand.get(k, 0.0)
+                phi[k] = (v / denom) if denom > 0 else np.nan
+        else:
+            phi = phi_raw
+
+        ks   = np.array(sorted(phi))
+        phis = np.array([phi[k] for k in ks])
+        valid = ~np.isnan(phis)
+        phi_auc = np.trapz(phis[valid], x=ks[valid])
+
+        degrees = np.array([d for _, d in G.degree()])
+        deg_cut = np.percentile(degrees, deg_cutoff_percentile)
+        rich_club_nodes = [n for n, d in G.degree() if d >= deg_cut]
+
+        return phi_auc, rich_club_nodes
+    
+    def most_common_members(self, members_list, N, min_frac=0.8):
+
+        T = len(members_list)
+        # build membership matrix
+        membership = np.zeros((N, T), dtype=int)
+        for t, mids in enumerate(members_list):
+            membership[mids, t] = 1
+        freq = membership.sum(axis=1) / T  # fraction of thresholds
+        # pick stable members
+        stable = np.where(freq >= min_frac)[0]
+        
+        return stable, freq
+
 
     def plotRichClub(self, layer1, layer2, layer3, name, n=360):
 
@@ -1063,7 +1453,6 @@ class LaminarRestingState:
             eigvecs_orig[:, :limit],   # cols 0 … limit-1
             eigvecs_orig[:, end:]      # cols end … M-1
             ])
-        print(eigvecs.shape)
         n_rows, n_cols = eigvecs.shape
         if n_rows != 1080:
             raise ValueError(f"Expected 1080 rows; got {n_rows}")
@@ -1285,7 +1674,6 @@ class LaminarRestingState:
             for j, combo in enumerate(all_combos):
                 freqs[i, j] = ctr.get(combo, 0)
 
-        print(freqs.sum(axis=(0,1)))
         fig, axs = plt.subplots(num_layers, 1, figsize=(12, 8), sharex=True, sharey=True)
         for layer in range(num_layers):
             axs[layer].bar(np.arange(len(all_combos)), freqs[layer])
@@ -1391,7 +1779,22 @@ class LaminarRestingState:
 
 
     def eigenvector_centrality_calc(self,
-                                    adj_matrix): 
+                                    adj_matrix,
+                                    weight=None): 
+        
+        G = nx.from_numpy_array(adj_matrix)
+        centrality = nx.eigenvector_centrality(G, max_iter=1000, weight=weight)
+        centrality_arr = np.array([centrality[i] for i in range(G.number_of_nodes())])
+
+        mat = centrality_arr.reshape(360, 3)
+        one_hot_centrality = np.zeros_like(mat, dtype=int)
+
+        # # for each row, find the index of the max and set that position to 1
+        idx_max = np.argmax(mat, axis=1)
+        one_hot_centrality[np.arange(360), idx_max] = 1 
+
+        return centrality_arr, one_hot_centrality
+        
         # if assume_symmetric:
         #     eigvals, eigvecs = np.linalg.eigh(adj_matrix)
         # else:
@@ -1417,19 +1820,6 @@ class LaminarRestingState:
         #     centrality = principal_eigvec / np.linalg.norm(principal_eigvec)
         # else:
         #     raise ValueError("normalize must be 'l1' or 'l2'")
-
-        G = nx.from_numpy_array(adj_matrix)
-        centrality = nx.eigenvector_centrality(G, max_iter=1000)
-        centrality_arr = np.array([centrality[i] for i in range(G.number_of_nodes())])
-
-        mat = centrality_arr.reshape(360, 3)
-        one_hot_centrality = np.zeros_like(mat, dtype=int)
-
-        # # for each row, find the index of the max and set that position to 1
-        idx_max = np.argmax(mat, axis=1)
-        one_hot_centrality[np.arange(360), idx_max] = 1 
-
-        return centrality_arr, one_hot_centrality
 
 
     def eigenvector_centrality_plot(self,
@@ -1585,6 +1975,7 @@ class LaminarRestingState:
 
         counts = np.zeros((12, 3), dtype=int)
         averages = np.zeros((12, 3), dtype=float)
+        sem = np.zeros((12, 3), dtype=float)
         
         mat = centrality.reshape(360, 3)
         for k in range(1, 13):
@@ -1592,6 +1983,7 @@ class LaminarRestingState:
             counts[k-1, :] = one_hot_centrality[mask, :].sum(axis=0)
             data = mat[mask, :]
             averages[k-1, :] = data.mean(axis=0)
+            sem[k-1,:] = data.std(axis=0, ddof=1) / np.sqrt(data.shape[0])
 
 
         # plotting
@@ -1640,16 +2032,34 @@ class LaminarRestingState:
         fig, axes = plt.subplots(4, 3, figsize=(12, 16), sharey=True)
         axes = axes.flatten()
         for idx, ax in enumerate(axes):
-            # bar positions for the 3 layers
+
             x      = np.arange(1, 4)
             heights= averages[idx, :]
+            errors = sem[idx, :]
+
+            # stat, pval = f_oneway(
+            #     averages[idx, 0, :],
+            #     averages[idx, 1, :],
+            #     averages[idx, 2, :]
+            # )
 
             # draw bars with error‐bars
             bars = ax.bar(
                 x, heights,
+                yerr=errors,
                 capsize=5,
                 edgecolor='black'
             )
+
+            # sig = "*" if pval < 0.05 else ""
+            # ax.text(
+            #     0.5, 0.95,
+            #     f"p = {pval:.3f}{sig}",
+            #     transform=ax.transAxes,
+            #     ha='center',
+            #     va='top',
+            #     fontsize=10
+            # )
 
             ax.set_title(tick_labels[idx])
             ax.set_xticks(x)
@@ -1707,7 +2117,7 @@ class LaminarRestingState:
         plt.savefig(f"{self.data_dir}/{name}/DegreePlot_{layerName}.png", bbox_inches="tight")
         plt.close()
 
-    def modularity(self, A, name, layerName):
+    def modularity(self, A):
 
         labels = np.loadtxt(
             'cortex_parcel_network_assignments.txt', 
@@ -1724,5 +2134,4 @@ class LaminarRestingState:
             kc = k[idx].sum()
             Q += (lc/m2) - (kc/m2)**2
 
-        print(f"Modularity in {layerName}: {Q}")
         return Q
