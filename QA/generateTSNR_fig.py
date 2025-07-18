@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from nilearn import plotting
 
 # Define input and output directories
-studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
+studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
 subject = "sub-04"
 
 # input_dir = f"{studyDataDir}/{subject}/func/derivatives/"
