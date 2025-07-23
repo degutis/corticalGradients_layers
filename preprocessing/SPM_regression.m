@@ -1,16 +1,21 @@
 clear all
 close all
-
+addpath(genpath('/home/degutis/repos/spm'));
 spm('Defaults','fmri');  % Initialize SPM
 spm_jobman('initcfg');   % Initialize job manager
 
 TR = 3.29;
 
-funcDir = fullfile('/Users','karolis','Desktop','highRes_Resting','sub-50','func','derivatives');
-funcFiles = dir(fullfile(funcDir, '*SMSEPI_mc.nii'));
-motionFiles = dir(fullfile(funcDir, '*SMSEPI_mc.par'));
+subject = 'sub-LAM006'
 
-atlas_file = fullfile('/Users','karolis','Desktop','highRes_Resting','derivatives','ref_anat','sub-50','HCP-MMP1_in-func.nii');
+funcDir = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','func',subject);
+
+funcFiles = dir(fullfile(funcDir, '*_mc.nii'));
+motionFiles = dir(fullfile(funcDir, '*_mc.par'));
+
+atlas_file = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','ref_anat',subject,'HCP-MMP1_in-func.nii');
+atlas_file
+
 V_a = spm_vol(atlas_file);
 Y_a = spm_read_vols(V_a);     
 

@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 from nilearn import plotting
 
 # Define input and output directories
-studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
-subject = "sub-04"
+# studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
+studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
+subject = "sub-LAM001"
 
 # input_dir = f"{studyDataDir}/{subject}/func/derivatives/"
-input_dir = f"{studyDataDir}/{subject}/func/"
+input_dir = f"{studyDataDir}/derivatives/func/{subject}"
 output_dir = f"{studyDataDir}/derivatives/func/tsnr/{subject}"
 figure_dir = f"{studyDataDir}/derivatives/func/tsnr/{subject}"
 
@@ -17,7 +18,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Get list of NIfTI files
 # nifti_files = [f for f in os.listdir(input_dir) if f.endswith("mc.nii") or f.endswith("mc.nii.gz")]
-nifti_files = [f for f in os.listdir(input_dir) if f.endswith(".nii") or f.endswith(".nii.gz")]
+nifti_files = [f for f in os.listdir(input_dir) if f.endswith("mc.nii") or f.endswith("mc.nii.gz")]
 
 for file in nifti_files:
     file_path = os.path.join(input_dir, file)

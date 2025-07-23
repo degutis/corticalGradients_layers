@@ -3,8 +3,9 @@ import subprocess
 import os
 import sys
 
-os.environ["SUBJECTS_DIR"] = "/Users/karolis/Desktop/highRes_Resting/derivatives/freesurfer/"
-script_dir = "/Users/karolis/Desktop/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+# os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/high_res_resting//derivatives/freesurfer/"
+os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting//derivatives/freesurfer/"
+script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
 os.environ["PATH"] += os.pathsep + script_dir
 sys.path.append(script_dir)
 
@@ -114,6 +115,6 @@ def process_ref_anat_subject(studyDataDir, subject):
         os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
 
 if __name__ == "__main__":
-    studyDir = "/Users/karolis/Desktop/highRes_Resting"
-    subject = "sub-50"
+    studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
+    subject = "sub-LAM005"
     process_ref_anat_subject(studyDir, subject)
