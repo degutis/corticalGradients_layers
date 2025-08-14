@@ -3,11 +3,13 @@ import numpy as np
 import nibabel as nib
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
+import laminarRestingState as lrs
+import laminarAnalyses as laman
 
-output_dir = '../../highRes_resting/derivatives/correlations/structuralMatrix/'
+output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/BigBrainMatrix/'
 os.makedirs(output_dir, exist_ok=True)
 
-def load_layers_by_vertex(hemi, n_layers=6, base_dir='../../SC_laminarThickness'):
+def load_layers_by_vertex(hemi, n_layers=6, base_dir='/home/degutis/repos/SC_laminarThickness'):
 
     out = []
     for layer in range(1, n_layers+1):
@@ -16,7 +18,7 @@ def load_layers_by_vertex(hemi, n_layers=6, base_dir='../../SC_laminarThickness'
         out.append(arr)
     return np.vstack(out).T
 
-def parcel_means_from_vertices(hemi, vert_layers, base_dir='../../SC_laminarThickness'):
+def parcel_means_from_vertices(hemi, vert_layers, base_dir='/home/degutis/repos/SC_laminarThickness'):
 
     # load labels
     lab_fname = f'tpl-bigbrain_hemi-{hemi}_desc-mmp1_parcellation.label.gii'
@@ -57,4 +59,16 @@ plt.savefig(f"{output_dir}/PartialCorrelation_BBA_Thickness.png", bbox_inches="t
 plt.close()
 np.save(os.path.join(output_dir, 'adjacency_matrix.npy'), adj_matrix)
 
+
+restStateSub = lrs.LaminarRestingState(output_dir, 360, 0, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")    
+M = adj_matrix
+
+print(M.shape)
+
+n_components = 5
+G = laman.run_gradient_analysis(M, n_components=n_components, random_state=13011992)
+np.save(os.path.join(output_dir, 'gradients_lamThick.npy'), G)
+
+for i in range(n_components):
+    restStateSub.__plot_on_mmhcp_surface_multipleLayers__(G[:,[i]], f'BigBrainLamThick_{i}', "PartialCorr")        
 

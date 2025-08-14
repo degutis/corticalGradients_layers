@@ -7,6 +7,9 @@ refAnatDir=/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/re
 
 # Bring Glasser into subject space
 
+
+# Bring Glasser into subject space
+
 mri_surf2surf --srcsubject fsaverage \
             --trgsubject ${subject} \
             --hemi lh \

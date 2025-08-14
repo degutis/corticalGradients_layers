@@ -5,7 +5,7 @@ import subprocess
 # studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
 #studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
 studyDataDir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS"
-subject = "sub-LAM002"
+
 
 #lib_dir = '/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library'
 lib_dir = '/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library'
@@ -39,3 +39,13 @@ subprocess.run([
     lib_dir,
     out_func
 ], check=True)
+
+
+print("Running motion correction NORDIC")
+subprocess.run([
+    "bash", "../fmri-analysis/library/motioncorrect.sh",
+    f"{func_dir}/{subject}_task-rest_bold_NORDIC.nii",
+    lib_dir,
+    out_func
+], check=True)
+
