@@ -158,14 +158,20 @@ if analysis=="WithinLayer_gradients_noThresh_DistanceMetric":
         D_inter_standard = (D_inter - np.min(D_inter)) / ((np.max(D_inter) - np.min(D_inter)))
         D_intra_standard = (D_intra_pairwise - np.min(D_intra_pairwise)) / ((np.max(D_intra_pairwise) - np.min(D_intra_pairwise)))
 
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Deep[:,np.newaxis], "D_Deep_15_zscore", analysis)        
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Mid[:,np.newaxis], "D_Mid_15_zscore", analysis)        
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Sup[:,np.newaxis], "D_Sup_15_zscore", analysis)        
+        # restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Deep[:,np.newaxis], "D_Deep_15_zscore", analysis)        
+        # restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Mid[:,np.newaxis], "D_Mid_15_zscore", analysis)        
+        # restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Sup[:,np.newaxis], "D_Sup_15_zscore", analysis)        
+
+        laman.plotFlatMap(D_inter, os.path.join(output_dir, analysis), "D_interFlatMap.png")
+        laman.plotFlatMap(D_intra, os.path.join(output_dir, analysis), "D_intraFlatMap.png")
+
+        laman.plotFlatMap(D_Deep, os.path.join(output_dir, analysis), "D_intraDeepFlatMap.png")
+        laman.plotFlatMap(D_Mid, os.path.join(output_dir, analysis), "D_intraMidFlatMap.png")
+        laman.plotFlatMap(D_Sup, os.path.join(output_dir, analysis), "D_intraSupFlatMap.png")
 
         D_Deep = (D_Deep - np.min(D_Deep)) / ((np.max(D_Deep) - np.min(D_Deep)))
         D_Mid = (D_Mid - np.min(D_Mid)) / ((np.max(D_Mid) - np.min(D_Mid)))
         D_Sup = (D_Sup - np.min(D_Sup)) / ((np.max(D_Sup) - np.min(D_Sup)))
-
 
         if plotD:
             restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_inter[:,np.newaxis], "D_inter_15_zscore", analysis)        
@@ -178,34 +184,34 @@ if analysis=="WithinLayer_gradients_noThresh_DistanceMetric":
         G_SC_standard = (G_SC[:,0] - np.min(G_SC[:,0])) / ((np.max(G_SC[:,0]) - np.min(G_SC[:,0])))
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_intra_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="IntraLamThick.png")
+                                                      x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="IntraLamThick.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="InterLamThick.png")
+                                                      x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="InterLamThick.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="InterIntra.png")
+                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="InterIntra.svg")
 
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: deep", y_label ="Laminar Thickness G1", fname="DeepLamThick.png")
+                                                      x_label="Intraparcel laminar difference: deep", y_label ="Laminar Thickness G1", fname="DeepLamThick.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: middle", y_label ="Laminar Thickness G1", fname="MidLamThick.png")
+                                                      x_label="Intraparcel laminar difference: middle", y_label ="Laminar Thickness G1", fname="MidLamThick.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="SupLamThick.png")
+                                                      x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="SupLamThick.svg")
 
 
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: middle", fname="DeepMid.png")
+                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: middle", fname="DeepMid.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: superficial", fname="DeepSup.png")
+                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: superficial", fname="DeepSup.svg")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: middle", y_label ="Interparcel laminar difference: superficial", fname="MidSup.png")
+                                                      x_label="Interparcel laminar difference: middle", y_label ="Interparcel laminar difference: superficial", fname="MidSup.svg")
 
 
 
