@@ -167,52 +167,109 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         raise ValueError("mode must be 'to_mean' or 'pairwise'")
 
 
-def plotFlatMap(vals, outdir):
-
+def plotFlatMap(
+    M,
+    outdir,
+    outname,
+    inputdir_1="/home/degutis/repos/HCP_WB_parcels",
+    inputdir_2="/home/degutis/repos/HumanCorticalParcellations",
+    cmap="RdBu_r",
+    vmin=None, vmax=None,
+    symmetric=False,         # center color range at 0 if True
+    rasterize=False          # set True if SVGs get too heavy
+):
+    """
+    M : (360,) or (360,1) array of parcel values (Glasser order: LH 1..180, RH 181..360).
+    Saves {outdir}/{outname} (e.g., 'D_interFlatMap.svg' or .png).
+    Requires:
+      - {inputdir_1}/GlasserAtlas.L.32k_fs_LR.label.gii
+      - {inputdir_1}/GlasserAtlas.R.32k_fs_LR.label.gii
+      - {inputdir_2}/S1200.L.flat.32k_fs_LR.surf.gii
+      - {inputdir_2}/S1200.R.flat.32k_fs_LR.surf.gii
+    """
+    import os
     import numpy as np
     import nibabel as nib
-    from brainspace.plotting import plot_hemispheres
+    import matplotlib.pyplot as plt
+    import matplotlib.tri as mtri
 
-    # 1) Load your (360,) parcel values
-    vals = np.asarray(np.load('my_parcel_values.npy')).reshape(-1)
-    assert vals.shape[0] == 360
+    os.makedirs(outdir, exist_ok=True)
+    outpath = os.path.join(outdir, outname)
 
-    # 2) Load hemisphere label.gii (per-vertex integer labels)
-    L_lab = nib.load('GlasserAtlas.L.32k_fs_LR.label.gii').agg_data().astype(int).squeeze()
-    R_lab = nib.load('GlasserAtlas.R.32k_fs_LR.label.gii').agg_data().astype(int).squeeze()
+    vals = np.asarray(M).reshape(-1)
+    assert vals.shape[0] == 360, f"Expected 360 values, got {vals.shape}"
 
-    # 3) Map parcel values -> vertex metrics
+    # ---- Load per-vertex labels (0=medial wall, 1..180 per hemi)
+    L_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.L.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
+    R_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.R.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
+
+    # ---- Map parcel values -> per-vertex metrics
     metric_L = np.full(L_lab.shape, np.nan, float)
     metric_R = np.full(R_lab.shape, np.nan, float)
-
     mL = L_lab > 0
-    metric_L[mL] = vals[L_lab[mL] - 1]           # LH labels 1..180 -> vals[0..179]
-
     mR = R_lab > 0
-    metric_R[mR] = vals[180 + R_lab[mR] - 1]     # RH labels 1..180 -> vals[180..359]
+    metric_L[mL] = vals[L_lab[mL] - 1]            # LH labels 1..180 -> vals[0..179]
+    metric_R[mR] = vals[180 + R_lab[mR] - 1]      # RH labels 1..180 -> vals[180..359]
 
-    # 4A) Plot on flat surfaces (no CIFTI needed)
-    surf_L = nib.load('S1200.L.flat.32k_fs_LR.surf.gii')
-    surf_R = nib.load('S1200.R.flat.32k_fs_LR.surf.gii')
+    # ---- Load flat meshes (coords, faces)
+    def load_surf_xy(path):
+        g = nib.load(path)
+        coords = np.asarray(g.darrays[0].data, dtype=float)
+        faces  = np.asarray(g.darrays[1].data, dtype=int)
+        # Use X,Y for flat map (Z is ~0)
+        return coords[:, 0], coords[:, 1], faces
 
-    fig = plot_hemispheres([surf_L, surf_R],
-                        [metric_L, metric_R],
-                        layout_style='flat',
-                        size=(1200, 450),
-                        cmap='viridis',
-                        color_bar=True,
-                        nan_color=(.85,.85,.85,1))
-    fig.savefig('glasser_flatmap.png', dpi=300)
+    xL, yL, fL = load_surf_xy(os.path.join(inputdir_2, "S1200.L.flat.32k_fs_LR.surf.gii"))
+    xR, yR, fR = load_surf_xy(os.path.join(inputdir_2, "S1200.R.flat.32k_fs_LR.surf.gii"))
 
+    # Sanity checks
+    assert metric_L.size == xL.size and metric_R.size == xR.size, "Vertex count mismatch (labels vs surface)."
 
+    # ---- Color range
+    data_all = np.concatenate([metric_L[np.isfinite(metric_L)], metric_R[np.isfinite(metric_R)]])
+    if data_all.size == 0:
+        raise ValueError("All metric values are NaN.")
+    if symmetric:
+        m = np.nanmax(np.abs(data_all))
+        vmin, vmax = -m, m
+    else:
+        if vmin is None: vmin = np.nanmin(data_all)
+        if vmax is None: vmax = np.nanmax(data_all)
+        if vmin == vmax:  # avoid degenerate color scale
+            vmin, vmax = vmin - 1e-6, vmax + 1e-6
 
+    # ---- Build triangulations
+    triL = mtri.Triangulation(xL, yL, fL)
+    triR = mtri.Triangulation(xR, yR, fR)
 
+    # Mask triangles touching NaNs (so medial wall doesn't render)
+    maskL = np.any(np.isnan(metric_L)[fL], axis=1)
+    maskR = np.any(np.isnan(metric_R)[fR], axis=1)
+    triL.set_mask(maskL)
+    triR.set_mask(maskR)
 
+    # ---- Plot
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), constrained_layout=True)
+    for ax in axes: ax.set_aspect('equal'); ax.axis('off')
 
+    kw = dict(cmap=cmap, vmin=vmin, vmax=vmax, shading='gouraud')
+    # Left hemi
+    imL = axes[0].tripcolor(triL, metric_L, **kw)
+    if rasterize: imL.set_rasterized(True)
+    axes[0].set_title("Left hemisphere")
+    # Right hemi
+    imR = axes[1].tripcolor(triR, metric_R, **kw)
+    if rasterize: imR.set_rasterized(True)
+    axes[1].set_title("Right hemisphere")
 
+    # Colorbar (shared)
+    cbar = fig.colorbar(imR, ax=axes.ravel().tolist(), shrink=0.85, pad=0.02)
+    cbar.set_label("Value")
 
-
-
+    # Save (SVG or PNG etc.)
+    fig.savefig(outpath, dpi=300 if outpath.lower().endswith(".png") else None)
+    plt.close(fig)
+    return outpath
 
 
 
