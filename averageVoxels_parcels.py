@@ -10,31 +10,37 @@ def averageVoxels_parcels_with_fs(
     layer_01=True
     ):
     
-    if subject=="sub-01":
-        # BOLD_data_path=f"../highRes_resting/{subject}/func/ses-02/derivatives/merged_residuals_{runNum}.nii"
-        BOLD_data_path = f'../highRes_Resting/{subject}/func/ses-02/derivatives/{subject}_{runNum}_bold_SMSEPI_mc.nii'
-        layer_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/ln_depths_equivol.nii"
-        atlas_path=f"../highRes_resting/derivatives/ref_anat/{subject}/ses-02/HCP-MMP1_in-func.nii"
-    else:
-        BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
-        layer_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
-        atlas_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii"
+    BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
+    layer_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
+    atlas_path_right=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/glasser_R_in-func.nii"
+    atlas_path_left=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/glasser_L_in-func.nii"
 
-    fs_atlas_path = f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
-    output_path = f"/media/miplab-nas2/Data/Karolis/high_res_resting/correlations/{subject}/Multiple_runs/{analysis_type}/"
+    fs_atlas_path = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/{subject}/mri/HCP-MMP1.nii.gz"
+    output_path = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/{analysis_type}/{subject}/"
     
     os.makedirs(output_path, exist_ok=True)
 
     # 1) Load images
     layer_img = nib.load(layer_path)
-    atlas_img = nib.load(atlas_path)
+    atlas_img_right = nib.load(atlas_path_right)
+    atlas_img_left = nib.load(atlas_path_left)
     bold_img  = nib.load(BOLD_data_path)
     fs_img    = nib.load(fs_atlas_path)
 
     layer_data = layer_img.get_fdata()
-    atlas_data = atlas_img.get_fdata()
+    atlas_data_right = atlas_img_right.get_fdata()
+    altas_data_right_add = np.where(atlas_data_right != 0,
+                                    atlas_data_right + 2000,
+                                    atlas_data_right)
+        
+    atlas_data_left = atlas_img_left.get_fdata()
+    altas_data_left_add = np.where(atlas_data_left != 0,
+                                    atlas_data_left + 1000,
+                                    atlas_data_left)
+
     bold_data  = bold_img.get_fdata()
     fs_data    = fs_img.get_fdata()
+    atlas_data = altas_data_right_add + altas_data_left_add
 
     # 2) Check shapes
     if (layer_data.shape != atlas_data.shape or
@@ -45,7 +51,7 @@ def averageVoxels_parcels_with_fs(
     layer_binary = np.zeros_like(layer_data, dtype=np.uint8)
     if layer_01:
         
-        if analysis_type == "smallGap":
+        if analysis_type == "smallGap_Gifti":
             layer_binary[(layer_data > 0)   & (layer_data <= 0.3)] = 1
             layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
             layer_binary[(layer_data > 0.7) & (layer_data <  1.0)] = 3
@@ -79,18 +85,20 @@ def averageVoxels_parcels_with_fs(
     # 5) Functional parcels present
     func_parcels = np.unique(atlas_data)
     func_parcels = func_parcels[
-        (func_parcels >= 1001) & (func_parcels <= 3000) & (func_parcels != 2000)
+        (func_parcels > 0) & (func_parcels <= 3000) & (func_parcels != 2000)
     ].astype(int)
-    func_set = set(func_parcels)
 
+    func_set = set(func_parcels)
+    layer_parcels_flat = []
+    
     # 6) Loop layers and parcels
     for layer in unique_layers:
         print(f"Processing layer {layer}")
         layer_mask = (layer_binary == layer)
 
-        # Initialize output with NaNs
+        # Initialize output with 0s
         n_tp = bold_data.shape[-1]
-        out = np.full((len(fs_parcels), n_tp), np.nan, dtype=float)
+        out = np.full((len(fs_parcels), n_tp), 0, dtype=float)
 
         for i, parcel in enumerate(fs_parcels):
             if parcel in func_set:
@@ -104,15 +112,29 @@ def averageVoxels_parcels_with_fs(
                     # out[i, :] = mean_ts
                 else:
                     print(parcel)
-            # else: leave as NaN for missing parcels
 
-        # Save results per layer
+        out = np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
+
         fname = f"Layer_{runNum}_{int(layer):d}.npy"
+        print(f"has_nan={np.isnan(out).any()}, ")
         np.save(os.path.join(output_path, fname), out)
         print(f"  → wrote {fname}")
+        
+        layer_parcels_flat.append(out.T)
 
-    print("All done.")
+    parcel_time_all = np.concatenate(layer_parcels_flat, axis=1)
 
-averageVoxels_parcels_with_fs("sub-04","run1","smallGap")
-averageVoxels_parcels_with_fs("sub-04","run2","smallGap")
-averageVoxels_parcels_with_fs("sub-04","run3","smallGap")
+    np.save(os.path.join(output_path, f"Layer_{runNum}_parcels_all_layers.npy"),
+            parcel_time_all)
+    print(parcel_time_all.shape)
+    print("All done")
+
+
+averageVoxels_parcels_with_fs("sub-LAM001","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM002","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM003","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM004","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM005","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM006","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM009","run1","smallGap_Gifti")
+averageVoxels_parcels_with_fs("sub-LAM011","run1","smallGap_Gifti")

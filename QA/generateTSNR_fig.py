@@ -62,7 +62,7 @@ for file in nifti_files:
         # vmin=0, 
         vmax=50,
         cut_coords=(0, 0, 0),  # Adjust coordinates if needed
-        # cmap="",  # Heatmap-like color map for better visualization
+        # cmap="afmhot",  # Heatmap-like color map for better visualization
         axes=ax
     )
     

@@ -8,7 +8,7 @@ from pathlib import Path
 
 # studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
 studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
-subject = "sub-LAM006"
+subject = "sub-LAM009"
 outputDir = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 
@@ -19,7 +19,10 @@ nii1 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1_in-func.ni
 
 # nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/ln_depths_equivol.nii").get_fdata()
 # nii2 = nib.load(f"{studyDataDir}/derivatives/func/{subject}/{subject}_MEAN.nii").get_fdata()
-nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/HCP-MMP1_in-func.nii").get_fdata()
+nii2_r = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_L_in-func.nii").get_fdata()
+nii2_l = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_R_in-func.nii").get_fdata()
+
+nii2 = nii2_r + nii2_l
 
 # Ensure both images have the same shape
 if nii1.shape != nii2.shape:
@@ -38,7 +41,6 @@ nii1_rgb = np.stack([nii1_slice_gray] * 3, axis=-1)  # Shape (H, W, 3)
 
 nii2_slice_gray = (nii2_slice * 255).astype(np.uint8)
 nii2_rgb = np.stack([nii2_slice_gray] * 3, axis=-1)  # Shape (H, W, 3)
-
 
 
 # Generate a random colormap
@@ -67,3 +69,5 @@ frames = [nii1_rgb, nii2_colored_resized] * 100  # Flashing effect
 
 # Save as GIF
 imageio.mimsave(f"{outputDir}/T1_atlas_contrast.gif", frames, duration=500)  # Adjust duration as needed
+# imageio.mimsave(f"{outputDir}/T1_layers_contrast.gif", frames, duration=500)  # Adjust duration as needed
+# imageio.mimsave(f"{outputDir}/T1_T2_contrast.gif", frames, duration=500)  # Adjust duration as needed

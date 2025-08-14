@@ -8,11 +8,213 @@ import matplotlib.pyplot as plt
 from brainspace.gradient import GradientMaps
 
 
-def runGradientAnalysis(conn_matrix):
-    gm = GradientMaps(kernel="cosine", approach = "dm")
-    gm.fit(conn_matrix)
+def run_gradient_analysis(conn_matrix, n_components=10, kernel="cosine", approach="dm", random_state=0):
     
-    return gm.gradients_
+    """
+    conn_matrix: (1080 x 1080) supra-adjacency (deep/mid/sup on diagonal blocks, identity couplings off-diagonal).
+    Returns G: (1080 x n_components) gradient coordinates in a joint embedding.
+    """
+
+    gm = GradientMaps(kernel=kernel, approach=approach, n_components=n_components, random_state=random_state)
+    gm.fit(conn_matrix)             # BrainSpace builds the affinity & diffusion map internally
+    return gm.gradients_            # shape: (1080, n_components)
+    
+def _split_layers(G1080, N=360):
+    assert G1080.ndim == 2 and G1080.shape[0] == 3*N, f"Expected (3*{N} x k); got {G1080.shape}"
+    return G1080[0:N, :], G1080[N:2*N, :], G1080[2*N:3*N, :]
+
+def _l2_normalize_rows(X, eps=1e-12):
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    norms = np.maximum(norms, eps)
+    Y = X / norms
+    # keep exact zeros as zeros
+    zero_rows = np.isclose(np.linalg.norm(X, axis=1), 0.0)
+    if np.any(zero_rows):
+        Y[zero_rows, :] = 0.0
+    return Y
+
+def inter_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False):
+    """
+    D_inter[i] = mean cosine distance between parcel i's laminar profile and all other parcels' profiles.
+    G1080: (1080 x k) gradients in a *joint* embedding.
+    Returns: (N,) array.
+    """
+    Gd, Gm, Gs = _split_layers(G1080, N=N)
+
+    if zscore_within_layer:
+        Gd = (Gd - Gd.mean(axis=0, keepdims=True)) / (Gd.std(axis=0, keepdims=True) + 1e-12)
+        print(Gd.shape)
+        Gm = (Gm - Gm.mean(axis=0, keepdims=True)) / (Gm.std(axis=0, keepdims=True) + 1e-12)
+        Gs = (Gs - Gs.mean(axis=0, keepdims=True)) / (Gs.std(axis=0, keepdims=True) + 1e-12)
+
+    Ud = _l2_normalize_rows(Gd)
+    Um = _l2_normalize_rows(Gm)
+    Us = _l2_normalize_rows(Gs)
+
+    # (N x 3k) laminar profile per parcel (unit rows → cosine similarity via dot)
+    P = np.concatenate([Ud, Um, Us], axis=1)
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(P, cmap="RdBu_r")
+    plt.title("ConcatMatrix P - inter areal dis")
+    plt.savefig(f"{outputDir}/ConcatMatrixP_inter.svg", bbox_inches="tight")
+    plt.close()
+
+
+    # cosine distance matrix
+    S = P @ P.T              # similarities, diag ~ 1
+    D = 1.0 - S              # distances
+    np.fill_diagonal(D, 0.0)
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(D, cmap="RdBu_r")
+    plt.title("Distance matrix - inter areal dis")
+    plt.savefig(f"{outputDir}/Matrix_interArealDis.svg", bbox_inches="tight")
+    plt.close()
+
+    distanceSum = D.sum(axis=1) / (N - 1)
+
+    plt.figure(figsize=(10, 10))
+    plt.imshow(distanceSum[:, np.newaxis], cmap="RdBu_r")
+    plt.title("Distance sum - inter areal dis")
+    plt.savefig(f"{outputDir}/Matrix_interArealDisSum.svg", bbox_inches="tight")
+    plt.close()
+
+    return distanceSum
+
+def plotMatrix(M, outputDir, name):
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(M, cmap="RdBu_r")
+    plt.title("Adjacency matrix")
+    plt.savefig(f"{outputDir}/{name}", bbox_inches="tight")
+    plt.close()
+
+
+
+def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False, mode="to_mean"):
+    """
+    D_intra[i] measures laminar heterogeneity within parcel i.
+    mode="to_mean": average cosine distance of each layer vector to the parcel's mean *direction*.
+    mode="pairwise": mean pairwise cosine distance among the three layers.
+    Returns: (N,) array.
+    """
+    Gd, Gm, Gs = _split_layers(G1080, N=N)
+
+    if zscore_within_layer:
+        Gd = (Gd - Gd.mean(axis=0, keepdims=True)) / (Gd.std(axis=0, keepdims=True) + 1e-12)
+        Gm = (Gm - Gm.mean(axis=0, keepdims=True)) / (Gm.std(axis=0, keepdims=True) + 1e-12)
+        Gs = (Gs - Gs.mean(axis=0, keepdims=True)) / (Gs.std(axis=0, keepdims=True) + 1e-12)
+
+    Ud, Um, Us = _l2_normalize_rows(Gd), _l2_normalize_rows(Gm), _l2_normalize_rows(Gs)
+
+    if mode == "to_mean":
+        # Ubar = _l2_normalize_rows((Ud + Um + Us) / 3.0)
+        Ubar = _l2_normalize_rows((Gd + Gm + Gs) / 3.0)
+        print(Ubar.shape)
+        
+        plt.figure(figsize=(6, 6))
+        plt.imshow(Ubar, cmap="RdBu_r")
+        plt.title("Ubar - intra areal dis")
+        plt.savefig(f"{outputDir}/Matrix_intraArealDis.svg", bbox_inches="tight")
+        plt.close()
+
+        d_deep = 1.0 - np.einsum("ij,ij->i", Ud, Ubar)
+        print(d_deep.shape)
+
+        plt.figure(figsize=(10, 10))
+        plt.imshow(d_deep[:,np.newaxis], cmap="RdBu_r")
+        plt.title("D_deep - intra areal dis")
+        plt.savefig(f"{outputDir}/Matrix_deep_intraArealDis.svg", bbox_inches="tight")
+        plt.close()
+
+
+        d_mid  = 1.0 - np.einsum("ij,ij->i", Um, Ubar)
+
+        plt.figure(figsize=(10, 10))
+        plt.imshow(d_mid[:,np.newaxis], cmap="RdBu_r")
+        plt.title("D_mid - intra areal dis")
+        plt.savefig(f"{outputDir}/Matrix_mid_intraArealDis.svg", bbox_inches="tight")
+        plt.close()
+
+        d_sup  = 1.0 - np.einsum("ij,ij->i", Us, Ubar)
+        
+        plt.figure(figsize=(10, 10))
+        plt.imshow(d_sup[:,np.newaxis], cmap="RdBu_r")
+        plt.title("D_sup - intra areal dis")
+        plt.savefig(f"{outputDir}/Matrix_sup_intraArealDis.svg", bbox_inches="tight")
+        plt.close()
+
+
+        d_intraMean = (d_deep + d_mid + d_sup) / 3.0
+        
+        plt.figure(figsize=(10, 10))
+        plt.imshow(d_intraMean[:,np.newaxis], cmap="RdBu_r")
+        plt.title("D_intraMean - intra areal dis")
+        plt.savefig(f"{outputDir}/Matrix_mean_intraArealDis.svg", bbox_inches="tight")
+        plt.close()
+
+
+        return d_intraMean, d_deep, d_mid, d_sup
+
+    elif mode == "pairwise":
+        d_dm = 1.0 - np.einsum("ij,ij->i", Ud, Um)
+        d_ds = 1.0 - np.einsum("ij,ij->i", Ud, Us)
+        d_ms = 1.0 - np.einsum("ij,ij->i", Um, Us)
+        return (d_dm + d_ds + d_ms) / 3.0
+
+    else:
+        raise ValueError("mode must be 'to_mean' or 'pairwise'")
+
+
+def plotFlatMap(vals, outdir):
+
+    import numpy as np
+    import nibabel as nib
+    from brainspace.plotting import plot_hemispheres
+
+    # 1) Load your (360,) parcel values
+    vals = np.asarray(np.load('my_parcel_values.npy')).reshape(-1)
+    assert vals.shape[0] == 360
+
+    # 2) Load hemisphere label.gii (per-vertex integer labels)
+    L_lab = nib.load('GlasserAtlas.L.32k_fs_LR.label.gii').agg_data().astype(int).squeeze()
+    R_lab = nib.load('GlasserAtlas.R.32k_fs_LR.label.gii').agg_data().astype(int).squeeze()
+
+    # 3) Map parcel values -> vertex metrics
+    metric_L = np.full(L_lab.shape, np.nan, float)
+    metric_R = np.full(R_lab.shape, np.nan, float)
+
+    mL = L_lab > 0
+    metric_L[mL] = vals[L_lab[mL] - 1]           # LH labels 1..180 -> vals[0..179]
+
+    mR = R_lab > 0
+    metric_R[mR] = vals[180 + R_lab[mR] - 1]     # RH labels 1..180 -> vals[180..359]
+
+    # 4A) Plot on flat surfaces (no CIFTI needed)
+    surf_L = nib.load('S1200.L.flat.32k_fs_LR.surf.gii')
+    surf_R = nib.load('S1200.R.flat.32k_fs_LR.surf.gii')
+
+    fig = plot_hemispheres([surf_L, surf_R],
+                        [metric_L, metric_R],
+                        layout_style='flat',
+                        size=(1200, 450),
+                        cmap='viridis',
+                        color_bar=True,
+                        nan_color=(.85,.85,.85,1))
+    fig.savefig('glasser_flatmap.png', dpi=300)
+
+
+
+
+
+
+
+
+
+
+
+
 
 def runClusterAnalysis(eigvecs_list, threshold=0.3):
 

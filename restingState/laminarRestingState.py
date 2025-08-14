@@ -36,163 +36,6 @@ class LaminarRestingState:
         self.npy_files = [f for f in os.listdir(data_dir) if f.endswith(".npy")]
         self.npy_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".npy")])
       
-    # def plotReliability(self, TR=3.2, reference_minutes=4, min_test_minutes=2, n_iterations=500):
-    #     """
-    #     Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers.
-    #     """
-    #     # how many volumes in one minute
-    #     volumes_per_minute = int(round(60.0 / TR))
-
-    #     # --- 1) collect layer‐grouped file lists ---
-    #     npy_files = [f for f in os.listdir(self.data_dir) if f.endswith('.npy')]
-    #     layer_groups = defaultdict(list)
-    #     for fname in npy_files:
-    #         try:
-    #             layer_num = int(fname.split('_')[-1].replace('.npy',''))
-    #         except Exception as e:
-    #             raise ValueError(f"Could not extract layer number from filename: {fname}") from e
-    #         layer_groups[layer_num].append(os.path.join(self.data_dir, fname))
-
-    #     reliability_results = {}
-
-    #     # --- 2) per‐layer curves (as before) ---
-    #     for layer_num in sorted(layer_groups):
-    #         files = layer_groups[layer_num]
-    #         print(f"\nLayer {layer_num}: {len(files)} run(s)")
-
-    #         # load+concat runs → data: [360 parcels, total_timepoints]
-    #         runs = [np.load(fp) for fp in files]
-    #         data = np.concatenate(runs, axis=1)
-    #         n_parcels, total_vols = data.shape
-    #         total_mins = total_vols // volumes_per_minute
-    #         print(f"  total_vols={total_vols}, total_mins={total_mins}")
-
-    #         if total_mins < reference_minutes + min_test_minutes:
-    #             print(f"  skip (need ≥{reference_minutes+min_test_minutes} min)")
-    #             continue
-
-    #         # pre‐compute FC upper‐triangle indices
-    #         iu = np.triu_indices(n_parcels, k=1)
-    #         layer_curve = []
-
-    #         for tmin in tqdm(range(min_test_minutes, total_mins - reference_minutes +1),
-    #                         desc=f"Layer {layer_num}"):
-    #             test_vols = tmin * volumes_per_minute
-    #             ref_vols  = reference_minutes * volumes_per_minute
-    #             corrs = []
-
-    #             for _ in range(n_iterations):
-    #                 # sample reference segment
-    #                 sr = np.random.randint(0, total_vols - ref_vols +1)
-    #                 ref_seg = data[:, sr:sr+ref_vols]
-    #                 # sample test segment
-    #                 st = np.random.randint(0, total_vols - test_vols +1)
-    #                 test_seg = data[:, st:st+test_vols]
-
-    #                 # resample if lengths differ
-    #                 if test_seg.shape[1] != ref_seg.shape[1]:
-    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
-
-    #                 # compute FCs and flatten
-    #                 ref_fc  = np.corrcoef(ref_seg)
-    #                 test_fc = np.corrcoef(test_seg)
-    #                 rvals = ref_fc[iu]
-    #                 tvals = test_fc[iu]
-
-    #                 # drop NaNs
-    #                 valid = ~np.isnan(rvals)&~np.isnan(tvals)
-    #                 if valid.sum() < 2:
-    #                     continue
-
-    #                 # corr of the two FC‐vectors
-    #                 r = np.corrcoef(rvals[valid], tvals[valid])[0,1]
-    #                 corrs.append(r)
-
-    #             layer_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
-
-    #         reliability_results[layer_num] = layer_curve
-
-    #     # --- 3) ALL‐layers curve ---
-    #     # group by run‐ID so that within‐run time‐axes align
-    #     run_groups = defaultdict(list)
-    #     for files in layer_groups.values():
-    #         for fp in files:
-    #             run_id = os.path.basename(fp).split('_')[1]   # e.g. 'run2'
-    #             run_groups[run_id].append(fp)
-
-    #     data_runs = []
-    #     for run_id, fps in run_groups.items():
-    #         # sort layers by layer‐number to keep row‐order consistent
-    #         fps_sorted = sorted(fps, key=lambda x: int(os.path.basename(x).split('_')[-1].replace('.npy','')))
-    #         arrs = [np.load(fp) for fp in fps_sorted]
-    #         # check all have same timepoints
-    #         T0 = arrs[0].shape[1]
-    #         if any(a.shape[1]!=T0 for a in arrs):
-    #             raise ValueError(f"Run {run_id} has mismatched timepoints across layers")
-    #         # stack parcels from every layer → shape [360 × n_layers, T0]
-    #         data_runs.append(np.vstack(arrs))
-
-    #     # now concat across runs → data_all [360 × n_layers, total_vols_all]
-    #     data_all = np.concatenate(data_runs, axis=1)
-    #     n_all, total_vols_all = data_all.shape
-    #     total_mins_all = total_vols_all // volumes_per_minute
-    #     print(f"\nALL‐LAYERS: parcels={n_all}, total_vols={total_vols_all}, total_mins={total_mins_all}")
-
-    #     if total_mins_all >= reference_minutes + min_test_minutes:
-    #         iu_all = np.triu_indices(n_all, k=1)
-    #         all_curve = []
-
-    #         for tmin in tqdm(range(min_test_minutes, total_mins_all - reference_minutes +1),
-    #                         desc="ALL‐LAYERS"):
-    #             test_vols = tmin * volumes_per_minute
-    #             ref_vols  = reference_minutes * volumes_per_minute
-    #             corrs = []
-
-    #             for _ in range(n_iterations):
-    #                 # sample segments
-    #                 sr = np.random.randint(0, total_vols_all - ref_vols +1)
-    #                 ref_seg = data_all[:, sr:sr+ref_vols]
-    #                 st = np.random.randint(0, total_vols_all - test_vols +1)
-    #                 test_seg = data_all[:, st:st+test_vols]
-
-    #                 if test_seg.shape[1] != ref_seg.shape[1]:
-    #                     test_seg = resample(test_seg, ref_seg.shape[1], axis=1)
-
-    #                 ref_fc  = np.corrcoef(ref_seg)
-    #                 test_fc = np.corrcoef(test_seg)
-    #                 rv, tv = ref_fc[iu_all], test_fc[iu_all]
-    #                 valid = ~np.isnan(rv)&~np.isnan(tv)
-    #                 if valid.sum() < 2:
-    #                     continue
-    #                 r = np.corrcoef(rv[valid], tv[valid])[0,1]
-    #                 corrs.append(r)
-
-    #             all_curve.append((tmin, np.nan if not corrs else np.mean(corrs)))
-
-    #         reliability_results['all'] = all_curve
-    #     else:
-    #         print("Not enough data to compute ALL‐LAYERS curve.")
-
-    #     # --- 4) Plot everything ---
-    #     plt.figure(figsize=(10,6))
-    #     for key, curve in sorted(reliability_results.items(), key=lambda x: str(x[0])):
-    #         mins, rs = zip(*curve)
-    #         label = 'All layers' if key=='all' else f'Layer {key}'
-    #         plt.plot(mins, rs, marker='o', label=label)
-        
-    #     plt.ylim(0, 1)
-    #     plt.xlabel('Test window length (minutes)')
-    #     plt.ylabel(f'Mean FC‐matrix corr (ref={reference_minutes} min)')
-    #     plt.title('Within‐subject FC reliability vs. time')
-    #     plt.grid(True)
-    #     plt.legend()
-    #     plt.tight_layout()
-
-    #     outpath = os.path.join(self.data_dir, 'Reliability_FC_all.png')
-    #     plt.savefig(outpath, bbox_inches='tight')
-    #     plt.close()
-    #     print(f"Saved combined plot to {outpath}")
-
     def plotReliability(self, TR=3.2, min_minutes=1, n_iterations=500):
         """
         Computes within‐subject FC reliability per layer AND across ALL parcels from ALL layers,
@@ -389,7 +232,9 @@ class LaminarRestingState:
                 layer_num = int(layer_str)
                 layer_groups[layer_num].append(file)
             except Exception as e:
-                raise ValueError(f"Could not extract layer number from filename: {file}") from e
+                # raise ValueError(f"Could not extract layer number from filename: {file}") from e
+                print(f"Could not extract layer number from filename: {file}")
+                continue
 
         sorted_layers = sorted(layer_groups.items())
         adj_matrix_within = np.empty((self.N, self.N, self.num_layers))
@@ -494,8 +339,9 @@ class LaminarRestingState:
 
         all_series_array = np.concatenate(concatenated_full, axis=0)
         full_corr = np.corrcoef(all_series_array)
-        full_corr = self.fisher_z(np.nan_to_num(full_corr, nan=0))
+        # full_corr = self.fisher_z(np.nan_to_num(full_corr, nan=0))
         np.fill_diagonal(full_corr, 0)
+        full_corr = np.nan_to_num(full_corr, nan=0)
         threshold = np.percentile(np.abs(full_corr), self.setThresh)
         adj_full = np.where(np.abs(full_corr) >= threshold, full_corr, 0)
         
@@ -594,49 +440,57 @@ class LaminarRestingState:
         plt.close()
 
 
-    def plotTwoDimEmbedding_old(self, eigvecs, name, eigvecs_to_plot=[1, 2]):
-
-        colors = np.repeat([0, 1, 2], self.N)
-        cmap = ListedColormap(['red', 'orange', 'purple'])
-        categories = np.unique(colors)
-        eigvecs_str = "".join(map(str, eigvecs_to_plot))
-
-        plt.figure(figsize=(8, 6))
-        for cat in categories:
-            category_points = eigvecs[colors == cat]
-            plt.scatter(category_points[:, eigvecs_to_plot[0]], category_points[:, eigvecs_to_plot[1]], color=cmap(cat), edgecolors='k', alpha=0.5)
-
-            slope, intercept = np.polyfit(category_points[:, eigvecs_to_plot[0]], category_points[:, eigvecs_to_plot[1]], 1)
-            plt.plot(category_points[:, eigvecs_to_plot[0]], slope * category_points[:, eigvecs_to_plot[0]] + intercept, color=cmap(cat), linewidth=2)
-
-        plt.xlabel(f'Eigenvector {eigvecs_to_plot[0]+1}')
-        plt.ylabel(f'Eigenvector {eigvecs_to_plot[1]+1}')
-        plt.title('Laplacian Embedding (Normalized)')
-        
-        handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=cmap(i), markersize=10) for i in range(3)]
-        plt.legend(handles, ['Superficial Layer', 'Middle Layer', 'Deep Layer'], title='Brain Parcel Index')
-        plt.savefig(f"{self.data_dir}/{name}/Laplacian_embedding_{eigvecs_str}.png", bbox_inches="tight")
-        plt.close()
-
-
     def plotTwoDimEmbedding(self,
                             eigvecs,
                             name,
-                            eigvecs_to_plot=(1, 2),
+                            eigvecs_to_plot=(0, 1),
                             layer_labels=None,
                             network_labels=None,
+                            x_label ="Emb1",
+                            y_label= "Emb2",
                             network_cmap='tab20'):
-        
-        # --- load networks from file (1–12 → 0–11) ---
-        cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)
-        networks0 = cats0 - 1
-        networks = np.tile(networks0, 3)
+        import os
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
 
-        layers = np.repeat([0, 1, 2], self.N)
+        # --- infer shapes ---
+        nrows, ndims = eigvecs.shape
+        N = getattr(self, "N", 360)  # default to 360 if not set
+        if nrows == 3 * N:
+            mode = "multilayer"      # 1080 x d
+        elif nrows == N:
+            mode = "single"          # 360 x d
+        else:
+            if nrows % 3 == 0:
+                N = nrows // 3
+                mode = "multilayer"
+            else:
+                N = nrows
+                mode = "single"
+
+        # --- handle eigvecs_to_plot: allow 1-based or 0-based ---
+        x_dim, y_dim = eigvecs_to_plot
+        if x_dim >= ndims or y_dim >= ndims:
+            x_dim = max(0, x_dim - 1)
+            y_dim = max(0, y_dim - 1)
+        if not (0 <= x_dim < ndims and 0 <= y_dim < ndims):
+            raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}] for eigvecs shape {eigvecs.shape}")
+
+        # --- load networks from file (1–12 → 0–11) ---
+        cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)  # (N,)
+        if cats0.shape[0] != N:
+            raise ValueError(f"Network assignment length {cats0.shape[0]} != N ({N}).")
+        networks0 = cats0 - 1  # 0..11
+
+        if mode == "multilayer":
+            networks = np.tile(networks0, 3)       # (3N,)
+            layers = np.repeat([0, 1, 2], N)       # indices for shapes
+        else:  # single
+            networks = networks0                   # (N,)
+            layers = np.zeros(N, dtype=int)        # single layer coded as 0
 
         # --- default labels/colors ---
-        if layer_labels is None:
-            layer_labels = ['Superficial', 'Middle', 'Deep']
         if network_labels is None:
             network_labels = [
                 "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
@@ -646,65 +500,202 @@ class LaminarRestingState:
         base_cmap = plt.get_cmap(network_cmap, len(network_labels))
         network_colors = [base_cmap(i) for i in range(len(network_labels))]
 
-        x_dim, y_dim = eigvecs_to_plot[0], eigvecs_to_plot[1]
+        # layer labels: allow a single string like "AcrossLayers"
+        if isinstance(layer_labels, str):
+            layer_labels = [layer_labels]
+        if layer_labels is None:
+            layer_labels = ['Superficial', 'Middle', 'Deep'] if mode == "multilayer" else ['AcrossLayers']
+        elif mode == "single" and len(layer_labels) != 1:
+            layer_labels = [layer_labels[0]]
 
-        # --- shapes for layers ---
-        shapes = ['o', 's', '^']
+        shapes = ['o', 's', '^'] if mode == "multilayer" else ['o']
 
-        plt.figure(figsize=(8, 6))
-        for lyr in np.unique(layers):
-            for net in np.unique(networks):
+        # --- create square figure/axes ---
+        fig, ax = plt.subplots(figsize=(7, 7))
+
+        # --- scatter by (layer, network) ---
+        unique_layers = np.unique(layers)
+        unique_nets = np.unique(networks)
+
+        for lyr in unique_layers:
+            for net in unique_nets:
                 mask = (layers == lyr) & (networks == net)
                 if not np.any(mask):
                     continue
-                plt.scatter(
+                ax.scatter(
                     eigvecs[mask, x_dim],
                     eigvecs[mask, y_dim],
-                    marker=shapes[int(lyr)],
+                    s = 10,
+                    marker=shapes[int(lyr if mode == "multilayer" else 0)],
                     facecolor=network_colors[int(net)],
                     edgecolor='k',
-                    alpha=0.7
+                    linewidths=0.2,
+                    alpha=0.8
                 )
 
-        plt.xlabel(f'Eigenvector {eigvecs_to_plot[0]+1}')
-        plt.ylabel(f'Eigenvector {eigvecs_to_plot[1]+1}')
-        plt.title('Laplacian Embedding (Normalized)')
+        # --- labels/title ---
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title('Embedding colored by RSN; shapes = layers' if mode == "multilayer"
+                    else 'Embedding colored by RSN (single layer)')
 
-        # --- legend for layers (shapes) ---
-        layer_handles = [
-            Line2D([0], [0],
-                marker=shapes[i],
-                color='w',
-                markeredgecolor='k',
-                markersize=10,
-                label=layer_labels[i])
-            for i in np.unique(layers)
-        ]
-        # --- legend for networks (colors) ---
+        # --- make axes square with equal spans ---
+        xdata = eigvecs[:, x_dim]
+        ydata = eigvecs[:, y_dim]
+        xmin, xmax = np.nanmin(xdata), np.nanmax(xdata)
+        ymin, ymax = np.nanmin(ydata), np.nanmax(ydata)
+        cx, cy = 0.5 * (xmin + xmax), 0.5 * (ymin + ymax)
+        half = 0.5 * max(xmax - xmin, ymax - ymin)
+        half = half * 1.05  # small padding
+        # ax.set_xlim(cx - half, cx + half)
+        # ax.set_ylim(cy - half, cy + half)
+        ax.set_aspect('equal', adjustable='box')   # data units square
+
+        # --- legends ---
+        # (1) Layer legend: **only** for multilayer inputs
+        if mode == "multilayer":
+            layer_handles = []
+            for i, lyr in enumerate(unique_layers):
+                label = layer_labels[int(lyr)] if int(lyr) < len(layer_labels) else f"Layer {int(lyr)}"
+                layer_handles.append(
+                    Line2D([0], [0], marker=shapes[i],
+                        color='w', markeredgecolor='k', markersize=9, label=label)
+                )
+            leg1 = ax.legend(handles=layer_handles, title='Layer', loc='upper right')
+            ax.add_artist(leg1)
+
+        # (2) Network legend (always shown)
         network_handles = [
-            Line2D([0], [0],
-                marker='o',
-                color='w',
-                markerfacecolor=network_colors[i],
-                markeredgecolor='k',
-                markersize=10,
-                label=network_labels[i])
-            for i in np.unique(networks)
+            Line2D([0], [0], marker='o', color='w',
+                markerfacecolor=network_colors[i], markeredgecolor='k',
+                markersize=9, label=network_labels[i])
+            for i in unique_nets
         ]
+        ax.legend(handles=network_handles, title='RSN',
+                bbox_to_anchor=(1.32, 1), loc='upper left')
 
-        leg1 = plt.legend(handles=layer_handles, title='Layer', loc='upper right')
-        plt.gca().add_artist(leg1)
-        plt.legend(handles=network_handles,
-                title='RSN',
-                bbox_to_anchor=(1.3, 1),
-                loc='upper left')
-
+        # --- save ---
         plt.tight_layout()
-        eigstr = f"{eigvecs_to_plot[0]}{eigvecs_to_plot[1]}"
-        outpath = f"{self.data_dir}/{name}/Laplacian_embedding_withNetworks_{eigstr}.png"
-        plt.savefig(outpath, bbox_inches='tight')
-        plt.close()
+        eigstr = f"{x_dim}{y_dim}"
+        outdir = f"{self.data_dir}/{name}"
+        os.makedirs(outdir, exist_ok=True)
+        suffix = "_multi" if mode == "multilayer" else "_single"
+        outpath = f"{outdir}/Embedding_withNetworks_{eigstr}{suffix}.png"
+        fig.savefig(outpath, bbox_inches='tight', dpi=500)
+        plt.close(fig)
         print("Saved embedding plot to:", outpath)
+
+
+
+    def plotScatterWithGlobalCorrelation(self,
+                                        eigvecs,
+                                        name,
+                                        eigvecs_to_plot=(0, 1),
+                                        layer_labels=None,
+                                        network_labels=None,
+                                        x_label="Emb1",
+                                        y_label="Emb2",
+                                        fname=None,
+                                        network_cmap="tab20",
+                                        dot_size=12):
+        """
+        eigvecs : (360×d)  or (1080×d) array
+                rows ordered as [deep; mid; sup] if 1080.
+        """
+        import os, numpy as np, matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
+        from scipy.stats import pearsonr
+
+        # --------------------------------------------------  infer rows / mode
+        nrows, ndims = eigvecs.shape
+        N = getattr(self, "N", 360)
+        mode = "multilayer" if nrows == 3 * N else "single"
+
+        # --------------------------------------------------  parse dims (accept 1-based)
+        x_dim, y_dim = eigvecs_to_plot
+        if x_dim >= ndims or y_dim >= ndims:
+            x_dim, y_dim = x_dim - 1, y_dim - 1
+        assert 0 <= x_dim < ndims and 0 <= y_dim < ndims, "dim index out of range"
+
+        # --------------------------------------------------  RSN labels & colours
+        if network_labels is None:
+            network_labels = [
+                "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+            ]
+        cmap = plt.get_cmap(network_cmap, len(network_labels))
+        net_colours = [cmap(i) for i in range(len(network_labels))]
+
+        # 360-parcel RSN index file (1-12 → 0-11)
+        nets0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int) - 1
+        assert nets0.size == N, "network file length mismatch"
+
+        if mode == "multilayer":
+            nets = np.tile(nets0, 3)
+            layers = np.repeat([0,1,2], N)
+            shapes = ['o','s','^']
+            if layer_labels is None: layer_labels = ["Deep","Middle","Superficial"]
+        else:
+            nets = nets0
+            layers = np.zeros(N, dtype=int)
+            shapes = ['o']
+            if layer_labels is None: layer_labels = ["AcrossLayers"]
+
+        # --------------------------------------------------  scatter
+        fig, ax = plt.subplots(figsize=(7,7))
+        for lyr in np.unique(layers):
+            for net in np.unique(nets):
+                m = (layers == lyr) & (nets == net)
+                if not m.any(): continue
+                ax.scatter(eigvecs[m, x_dim],
+                        eigvecs[m, y_dim],
+                        s=dot_size,
+                        marker=shapes[int(lyr)],
+                        facecolor=net_colours[int(net)],
+                        edgecolor='k', linewidths=0.25, alpha=0.8)
+
+        # --------------------------------------------------  global correlation
+        r, p = pearsonr(eigvecs[:, x_dim], eigvecs[:, y_dim])
+        # regression line
+        coeffs = np.polyfit(eigvecs[:, x_dim], eigvecs[:, y_dim], 1)
+        xs = np.linspace(*ax.get_xlim(), 200)
+        ax.plot(xs, coeffs[0]*xs + coeffs[1], color='k', ls='--', lw=1)
+
+        txt = f"r = {r:.3f}\np = {p:.3g}"
+        bbox_props = dict(boxstyle="round,pad=0.25", fc="w", ec="k", lw=0.4)
+        ax.text(-0.05, 1.06, txt, ha="right", va="bottom",
+        transform=ax.transAxes, fontsize=5, bbox=bbox_props)
+
+        # labels / square axis
+        ax.set_xlabel(x_label); ax.set_ylabel(y_label)
+        ax.set_title("RSN-coloured embedding" + (" (layers as shapes)" if mode=="multilayer" else ""))
+        ax.set_aspect('equal', adjustable='box')
+
+        # --------------------------------------------------  legends
+        net_handles = [Line2D([0],[0], marker='o', color='w',
+                            markerfacecolor=net_colours[i], markeredgecolor='k',
+                            markersize=8, label=network_labels[i])
+                    for i in np.unique(nets)]
+        ax.legend(handles=net_handles, title="RSN",
+                bbox_to_anchor=(1.32,1), loc='upper left')
+
+        if mode == "multilayer":
+            lyr_handles = [Line2D([0],[0], marker=shapes[i], color='w',
+                                markeredgecolor='k', markersize=8, label=layer_labels[i])
+                        for i in np.unique(layers)]
+            ax.add_artist(ax.legend(handles=lyr_handles, title="Layer", loc='upper right'))
+
+        # --------------------------------------------------  save
+        outdir = os.path.join(self.data_dir, name); os.makedirs(outdir, exist_ok=True)
+        if fname is None:
+            fname = f"ScatterCorr_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}.png"
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
+        plt.close(fig)
+        print("Saved:", os.path.join(outdir, fname))
+
+
 
 
     def plotTwoDimEmbedding_byNetwork(self,
@@ -795,7 +786,7 @@ class LaminarRestingState:
 
 
 
-    def eigvecs_to_nifti(self, eigvecs, name, hcp_atlas=True, force_run=True, scaleEigVecs=False):
+    def eigvecs_to_nifti(self, eigvecs, name, hcp_atlas=True, force_run=True, scaleEigVecs=False, saveNifti=False):
         
         if scaleEigVecs:
             M = np.max(np.abs(eigvecs), axis=0)  # Find max absolute value per eigenvector
@@ -835,8 +826,12 @@ class LaminarRestingState:
         # Loop through eigenvector dimensions
         for i in indices:  
             if force_run or not os.path.exists(f"{self.data_dir}/{name}/eigenvector_layers"):
-
-                os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers{self.addName}", exist_ok=True)  # Create folder for layer-wise maps
+                
+                try:
+                    os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers{self.addName}", exist_ok=True)  # Create folder for layer-wise maps
+                except:
+                    os.makedirs(f"{self.data_dir}/{name}/eigenvector_layers", exist_ok=True)                
+                
                 layer_imgs = []
 
                 for layer_idx, layer_data in enumerate(eig_layers):  
@@ -851,7 +846,8 @@ class LaminarRestingState:
                         map_3D[final_mask] = layer_data[roi_idx, i]
 
                     layer_img = nib.Nifti1Image(map_3D, affine=parcel_atlas_img.affine)
-                    nib.save(layer_img, f"{self.data_dir}/{name}/eigenvector_layers/eigenvector_{i+1}_layer_{layer_idx+1}.nii.gz")
+                    if saveNifti:
+                        nib.save(layer_img, f"{self.data_dir}/{name}/eigenvector_layers/eigenvector_{i+1}_layer_{layer_idx+1}.nii.gz")
                     layer_imgs.append(layer_img)  # Store for later plotting
                 #self.__plot_on_volume__(layer_imgs, i+1, name)
 
@@ -875,7 +871,7 @@ class LaminarRestingState:
         
         if noSubcortical:
             current_length = len(Xp[:, 0])  # Get the number of parcels (rows)
-            print(f'Currend length/num of parcels: {current_length}')
+            print(f'Current length/num of parcels: {current_length}')
             target_length = len(mmp_labels)  # Target length is the number of regions (parcels)
             zeros_to_add = target_length - current_length
             print(f'Zeros to add: {zeros_to_add}')
@@ -1795,32 +1791,6 @@ class LaminarRestingState:
 
         return centrality_arr, one_hot_centrality
         
-        # if assume_symmetric:
-        #     eigvals, eigvecs = np.linalg.eigh(adj_matrix)
-        # else:
-        #     eigvals, eigvecs = np.linalg.eig(adj_matrix)
-
-        # # sort by descending magnitude
-        # idx = np.argsort(np.abs(eigvals))[::-1]
-        # eigvals = eigvals[idx]
-        # eigvecs = eigvecs[:, idx]
-
-        # # principal eigenpair
-        # principal_eigval = eigvals[0]
-        # principal_eigvec = eigvecs[:, 0]
-
-        # # take real part if it's symmetric (imag parts should be ~0)
-        # if assume_symmetric and np.iscomplexobj(principal_eigvec):
-        #     principal_eigvec = principal_eigvec.real
-
-        # # normalize
-        # if normalize == "l1":
-        #     centrality = principal_eigvec / np.sum(principal_eigvec)
-        # elif normalize == "l2":
-        #     centrality = principal_eigvec / np.linalg.norm(principal_eigvec)
-        # else:
-        #     raise ValueError("normalize must be 'l1' or 'l2'")
-
 
     def eigenvector_centrality_plot(self,
                                     centrality,

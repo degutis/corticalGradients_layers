@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-subject=sub-LAM005
+subject=sub-LAM011
 # fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/${subject}/
 fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/${subject}/
 bold_file=${subject}_MEAN.nii
@@ -15,7 +15,8 @@ if [[ -f "${subject}_MEAN.nii" ]]; then
     echo "${subject}_MEAN.nii already exists. Skipping computation."
 else
     echo "Merging all motion-corrected runs for ${subject}…"
-    fslmerge -t all_func_runs.nii.gz *_mc.nii*
+    # fslmerge -t all_func_runs.nii.gz *_mc.nii*
+    fslmerge -t all_func_runs.nii.gz *NORDIC_mc.nii*
 
     echo "Computing temporal mean…"
     fslmaths all_func_runs.nii.gz -Tmean "${subject}_MEAN.nii.gz"
@@ -35,7 +36,7 @@ bold_file=${n4bold_file}
 
 bold_brain_file=${bold_file_withoutExt}_n4_brain.nii
 # bet ${bold_file} ${bold_brain_file} -f 0.15
-bet ${bold_file} ${bold_brain_file} -f 0.15
+bet ${bold_file} ${bold_brain_file} -f 0.2
 bold_file=${bold_brain_file}
 gunzip ${bold_file}.gz -f
 
@@ -50,7 +51,7 @@ gunzip ${bold_file}.gz -f
 
 
 mask_file=mask_le1500.nii.gz
-fslmaths ${bold_file} -uthr 950 -bin ${mask_file}
+fslmaths ${bold_file} -uthr 800 -bin ${mask_file}
 
 threshold_file=${bold_file_withoutExt}_n4_brain_thresh.nii
 fslmaths ${bold_file} -mas ${mask_file} ${threshold_file}.gz

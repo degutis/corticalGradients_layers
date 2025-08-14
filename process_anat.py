@@ -77,44 +77,133 @@ def process_ref_anat_subject(studyDataDir, subject):
     os.remove(os.path.join(ref_anat_dir, "fs_ribbon.nii"))
 
     # # 4. calculate LAYNII depths
-    area_files = {
-        ("lh", "white"): os.path.join(fs_dir, "surf", "lh.area"),
-        ("rh", "white"): os.path.join(fs_dir, "surf", "rh.area"),
-        ("lh", "pial"): os.path.join(fs_dir, "surf", "lh.area.pial"),
-        ("rh", "pial"): os.path.join(fs_dir, "surf", "rh.area.pial"),
+    # area_files = {
+    #     ("lh", "white"): os.path.join(fs_dir, "surf", "lh.area"),
+    #     ("rh", "white"): os.path.join(fs_dir, "surf", "rh.area"),
+    #     ("lh", "pial"): os.path.join(fs_dir, "surf", "lh.area.pial"),
+    #     ("rh", "pial"): os.path.join(fs_dir, "surf", "rh.area.pial"),
+    # }
+    # for method in ["equivol", "equidist"]:
+    #     print(f"Calculating VDFS and layers using method: {method}...")
+    #     # vdfs_depths, vdfs_columns = vdfs.process_dc_voxeldepth_from_surfaces(
+    #     #     os.path.join(ref_anat_dir, "L.white.func.surf.gii"),
+    #     #     area_files["lh", "white"],
+    #     #     os.path.join(ref_anat_dir, "L.pial.func.surf.gii"),
+    #     #     area_files["lh", "pial"],
+    #     #     os.path.join(ref_anat_dir, "R.white.func.surf.gii"),
+    #     #     area_files["rh", "white"],
+    #     #     os.path.join(ref_anat_dir, "R.pial.func.surf.gii"),
+    #     #     area_files["rh", "pial"],
+    #     #     os.path.join(ref_anat_dir, "fs_t1_in-func.nii"),
+    #     #     os.path.join(ref_anat_dir, f"vdfs_depths_{method}.nii"),
+    #     #     os.path.join(ref_anat_dir, f"vdfs_columns_{method}.nii"),
+    #     #     method=method,
+    #     #     upsample_factor=None,
+    #     #     n_jobs=8,
+    #     #     force=True,
+    #     # )
+    #     analysis.calc_layers_laynii(
+    #         os.path.join(ref_anat_dir, "rim.nii"),
+    #         method=method,
+    #         force=True,
+    #     )
+    #     os.rename(
+    #         os.path.join(ref_anat_dir, f"rim_metric_{method}.nii"),
+    #         os.path.join(ref_anat_dir, f"ln_depths_{method}.nii"),
+    #     )
+    #     os.remove(os.path.join(ref_anat_dir, f"rim_layers_{method}.nii"))
+    #     os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
+
+
+
+    # 5. generate func mid surf and transform atlasses
+    glasser_labels = {
+        "L": "/home/degutis/repos/HCP_WB_parcels/GlasserAtlas.L.164k_fs_LR.label.gii",
+        "R": "/home/degutis/repos/HCP_WB_parcels/GlasserAtlas.R.164k_fs_LR.label.gii",
     }
-    for method in ["equivol", "equidist"]:
-        print(f"Calculating VDFS and layers using method: {method}...")
-        # vdfs_depths, vdfs_columns = vdfs.process_dc_voxeldepth_from_surfaces(
-        #     os.path.join(ref_anat_dir, "L.white.func.surf.gii"),
-        #     area_files["lh", "white"],
-        #     os.path.join(ref_anat_dir, "L.pial.func.surf.gii"),
-        #     area_files["lh", "pial"],
-        #     os.path.join(ref_anat_dir, "R.white.func.surf.gii"),
-        #     area_files["rh", "white"],
-        #     os.path.join(ref_anat_dir, "R.pial.func.surf.gii"),
-        #     area_files["rh", "pial"],
-        #     os.path.join(ref_anat_dir, "fs_t1_in-func.nii"),
-        #     os.path.join(ref_anat_dir, f"vdfs_depths_{method}.nii"),
-        #     os.path.join(ref_anat_dir, f"vdfs_columns_{method}.nii"),
-        #     method=method,
-        #     upsample_factor=None,
-        #     n_jobs=8,
-        #     force=True,
-        # )
-        analysis.calc_layers_laynii(
-            os.path.join(ref_anat_dir, "rim.nii"),
-            method=method,
-            force=True,
+
+    for hemi in ["L", "R"]:
+        fs_LR_sphere = os.path.join(
+            ciftify_dir, "MNINonLinear", f"{subject}.{hemi}.sphere.164k_fs_LR.surf.gii"
         )
-        os.rename(
-            os.path.join(ref_anat_dir, f"rim_metric_{method}.nii"),
-            os.path.join(ref_anat_dir, f"ln_depths_{method}.nii"),
+        fs_LR_mid_surf = os.path.join(
+            ciftify_dir,
+            "MNINonLinear",
+            f"{subject}.{hemi}.midthickness.164k_fs_LR.surf.gii",
         )
-        os.remove(os.path.join(ref_anat_dir, f"rim_layers_{method}.nii"))
-        os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
+        fs_LR_roi = os.path.join(
+            ciftify_dir,
+            "MNINonLinear",
+            f"{subject}.{hemi}.atlasroi.164k_fs_LR.shape.gii",
+        )
+
+        native_sphere = os.path.join(
+            ciftify_dir,
+            "MNINonLinear",
+            "Native",
+            f"{subject}.{hemi}.sphere.MSMSulc.native.surf.gii",
+        )
+        native_pial_surf = os.path.join(ref_anat_dir, f"{hemi}.pial.func.surf.gii")
+        native_white_surf = os.path.join(ref_anat_dir, f"{hemi}.white.func.surf.gii")
+        native_mid_surf = os.path.join(ref_anat_dir, f"{hemi}.mid.func.surf.gii")
+        # generate mid surf
+        subprocess.run(
+            [
+                "wb_command",
+                "-surface-average",
+                native_mid_surf,
+                "-surf",
+                native_pial_surf,
+                "-surf",
+                native_white_surf,
+            ]
+        )
+
+        #        for atlas, labels in zip(["glasser", "md"], [glasser_labels, md_labels]):
+        for atlas, labels in zip(["glasser"], [glasser_labels]):
+            atlas_fs_LR_space = labels[hemi]
+            atlas_native_surf = os.path.join(
+                ref_anat_dir, f"{subject}.{atlas}.{hemi}.native.label.gii"
+            )
+            atlas_native_volume = os.path.join(
+                ref_anat_dir, f"{atlas}_{hemi}_in-func.nii"
+            )
+            subprocess.run(
+                [
+                    "wb_command",
+                    "-label-resample",
+                    atlas_fs_LR_space,
+                    fs_LR_sphere,
+                    native_sphere,
+                    "ADAP_BARY_AREA",
+                    atlas_native_surf,
+                    "-area-surfs",
+                    fs_LR_mid_surf,
+                    native_mid_surf,
+                    "-current-roi",
+                    fs_LR_roi,
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "wb_command",
+                    "-label-to-volume-mapping",
+                    atlas_native_surf,
+                    native_mid_surf,
+                    os.path.join(preprocess_vaso_dir, "fs_t1_in-func.nii"),
+                    atlas_native_volume,
+                    "-ribbon-constrained",
+                    native_white_surf,
+                    native_pial_surf,
+                ],
+                check=True,
+            )
+
+
+
 
 if __name__ == "__main__":
     studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM005"
+    subject = "sub-LAM011"
     process_ref_anat_subject(studyDir, subject)
