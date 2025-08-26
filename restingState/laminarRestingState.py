@@ -320,7 +320,9 @@ class LaminarRestingState:
                 layer_num = int(layer_str)
                 layer_groups[layer_num].append(file)
             except Exception as e:
-                raise ValueError(f"Could not extract layer number from filename: {file}") from e
+                # raise ValueError(f"Could not extract layer number from filename: {file}") from e
+                print(f"Could not extract layer number from filename: {file}")
+                continue
 
         sorted_layers = sorted(layer_groups.items())        
         concatenated_full = []
@@ -446,61 +448,116 @@ class LaminarRestingState:
                             eigvecs_to_plot=(0, 1),
                             layer_labels=None,
                             network_labels=None,
-                            x_label ="Emb1",
-                            y_label= "Emb2",
-                            network_cmap='tab20'):
+                            x_label="Emb1",
+                            y_label="Emb2",
+                            network_cmap='tab10',
+                            # NEW:
+                            atlas='schaefer',  # 'schaefer' (7-net) or 'custom'
+                            schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
+                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
+                            ):
         import os
         import numpy as np
         import matplotlib.pyplot as plt
         from matplotlib.lines import Line2D
+        import nibabel as nib
 
-        # --- infer shapes ---
-        nrows, ndims = eigvecs.shape
-        N = getattr(self, "N", 360)  # default to 360 if not set
-        if nrows == 3 * N:
-            mode = "multilayer"      # 1080 x d
-        elif nrows == N:
-            mode = "single"          # 360 x d
+        def _load_label_gii(path):
+            g = nib.load(path)
+            labs = np.asarray(g.agg_data(), dtype=int).squeeze()
+            # build key -> name map from the label table
+            lt = g.labeltable
+            key_to_name = {lab.key: lab.label for lab in lt.labels}
+            return labs, key_to_name
+
+        def _schaefer7_from_name(name: str) -> int:
+            """Map Schaefer 7-network label name to an index 0..6 (Yeo-7 order)."""
+            n = name.lower()
+            # typical substrings in Schaefer 7N names: Vis, SomMot, DorsAttn, SalVentAttn, Limbic, Cont, Default
+            if 'vis' in n:
+                return 0  # Visual
+            if 'som' in n or 'sommot' in n:
+                return 1  # Somatomotor
+            if 'dorsattn' in n or ('dors' in n and 'attn' in n):
+                return 2  # Dorsal Attention
+            if 'ventattn' in n or 'salventattn' in n or ('vent' in n and 'attn' in n) or 'sal' in n:
+                return 3  # Ventral/Salience
+            if 'limbic' in n:
+                return 4  # Limbic
+            if 'cont' in n or 'control' in n or 'frontoparietal' in n or 'fp' in n:
+                return 5  # Control/Frontoparietal
+            if 'default' in n:
+                return 6  # Default
+            raise ValueError(f"Unrecognized Schaefer-7 network in label name: {name}")
+
+        # ---------- build per-parcel network vector ----------
+        if atlas.lower() == 'schaefer':
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("Provide schaefer_label_L and schaefer_label_R (.label.gii on fs_LR 32k).")
+
+            L_lab, L_map = _load_label_gii(schaefer_label_L)
+            R_lab, R_map = _load_label_gii(schaefer_label_R)
+
+            # Unique parcel keys per hemisphere (skip 0 = medial wall), sorted → defines parcel order
+            uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+            uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+
+            # Per-parcel network indices in order [LH parcels..., RH parcels...]
+            networks0 = []
+            for k in uL:
+                networks0.append(_schaefer7_from_name(L_map[k]))
+            for k in uR:
+                networks0.append(_schaefer7_from_name(R_map[k]))
+            networks0 = np.asarray(networks0, dtype=int)
+
+            N = networks0.size  # parcels total (LH+RH)
+            # default labels for 7 networks (only if not provided)
+            if network_labels is None:
+                network_labels = ['Visual', 'Somatomotor', 'Dorsal Attn',
+                                'Ventral/Salience', 'Limbic', 'Control', 'Default']
         else:
-            if nrows % 3 == 0:
-                N = nrows // 3
+            # Fallback: use your existing text file (expects 1..K coded networks)
+            cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)
+            N = cats0.shape[0]
+            networks0 = cats0 - 1
+            if network_labels is None:
+                # keep your 12-network defaults
+                network_labels = [
+                    "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+                    "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+                    "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
+                ]
+
+        # ---------- infer mode from eigvecs vs N ----------
+        nrows, ndims = eigvecs.shape
+        if nrows == 3 * N:
+            mode = "multilayer"
+        elif nrows == N:
+            mode = "single"
+        else:
+            if nrows % 3 == 0 and nrows // 3 == N:
                 mode = "multilayer"
             else:
-                N = nrows
-                mode = "single"
+                raise ValueError(f"eigvecs has {nrows} rows, but atlas implies N={N} parcels "
+                                f"(expected {N} or {3*N} rows).")
 
-        # --- handle eigvecs_to_plot: allow 1-based or 0-based ---
+        # ---------- pick dims (supports 1- or 0-based tuple) ----------
         x_dim, y_dim = eigvecs_to_plot
         if x_dim >= ndims or y_dim >= ndims:
             x_dim = max(0, x_dim - 1)
             y_dim = max(0, y_dim - 1)
         if not (0 <= x_dim < ndims and 0 <= y_dim < ndims):
-            raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}] for eigvecs shape {eigvecs.shape}")
+            raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}]")
 
-        # --- load networks from file (1–12 → 0–11) ---
-        cats0 = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)  # (N,)
-        if cats0.shape[0] != N:
-            raise ValueError(f"Network assignment length {cats0.shape[0]} != N ({N}).")
-        networks0 = cats0 - 1  # 0..11
-
+        # ---------- expand networks to multilayer if needed ----------
         if mode == "multilayer":
             networks = np.tile(networks0, 3)       # (3N,)
-            layers = np.repeat([0, 1, 2], N)       # indices for shapes
-        else:  # single
-            networks = networks0                   # (N,)
-            layers = np.zeros(N, dtype=int)        # single layer coded as 0
+            layers = np.repeat([0, 1, 2], N)       # Deep/Middle/Superficial (or your order)
+        else:
+            networks = networks0
+            layers = np.zeros(N, dtype=int)
 
-        # --- default labels/colors ---
-        if network_labels is None:
-            network_labels = [
-                "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
-                "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
-                "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
-            ]
-        base_cmap = plt.get_cmap(network_cmap, len(network_labels))
-        network_colors = [base_cmap(i) for i in range(len(network_labels))]
-
-        # layer labels: allow a single string like "AcrossLayers"
+        # ---------- labels/colors ----------
         if isinstance(layer_labels, str):
             layer_labels = [layer_labels]
         if layer_labels is None:
@@ -508,12 +565,12 @@ class LaminarRestingState:
         elif mode == "single" and len(layer_labels) != 1:
             layer_labels = [layer_labels[0]]
 
+        base_cmap = plt.get_cmap(network_cmap, len(network_labels))
+        network_colors = [base_cmap(i) for i in range(len(network_labels))]
         shapes = ['o', 's', '^'] if mode == "multilayer" else ['o']
 
-        # --- create square figure/axes ---
+        # ---------- plot ----------
         fig, ax = plt.subplots(figsize=(7, 7))
-
-        # --- scatter by (layer, network) ---
         unique_layers = np.unique(layers)
         unique_nets = np.unique(networks)
 
@@ -525,46 +582,30 @@ class LaminarRestingState:
                 ax.scatter(
                     eigvecs[mask, x_dim],
                     eigvecs[mask, y_dim],
-                    s = 10,
+                    s=10,
                     marker=shapes[int(lyr if mode == "multilayer" else 0)],
                     facecolor=network_colors[int(net)],
                     edgecolor='k',
                     linewidths=0.2,
-                    alpha=0.8
+                    alpha=0.85
                 )
 
-        # --- labels/title ---
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        ax.set_title('Embedding colored by RSN; shapes = layers' if mode == "multilayer"
-                    else 'Embedding colored by RSN (single layer)')
+        ax.set_title('Embedding colored by Schaefer-7 RSN; shapes = layers' if mode == "multilayer"
+                    else 'Embedding colored by Schaefer-7 RSN')
+        ax.set_aspect('equal', adjustable='box')
 
-        # --- make axes square with equal spans ---
-        xdata = eigvecs[:, x_dim]
-        ydata = eigvecs[:, y_dim]
-        xmin, xmax = np.nanmin(xdata), np.nanmax(xdata)
-        ymin, ymax = np.nanmin(ydata), np.nanmax(ydata)
-        cx, cy = 0.5 * (xmin + xmax), 0.5 * (ymin + ymax)
-        half = 0.5 * max(xmax - xmin, ymax - ymin)
-        half = half * 1.05  # small padding
-        # ax.set_xlim(cx - half, cx + half)
-        # ax.set_ylim(cy - half, cy + half)
-        ax.set_aspect('equal', adjustable='box')   # data units square
-
-        # --- legends ---
-        # (1) Layer legend: **only** for multilayer inputs
+        # Legends
         if mode == "multilayer":
-            layer_handles = []
-            for i, lyr in enumerate(unique_layers):
-                label = layer_labels[int(lyr)] if int(lyr) < len(layer_labels) else f"Layer {int(lyr)}"
-                layer_handles.append(
-                    Line2D([0], [0], marker=shapes[i],
-                        color='w', markeredgecolor='k', markersize=9, label=label)
-                )
+            layer_handles = [
+                Line2D([0], [0], marker=shapes[i], color='w', markeredgecolor='k',
+                    markersize=9, label=layer_labels[int(lyr)])
+                for i, lyr in enumerate(unique_layers)
+            ]
             leg1 = ax.legend(handles=layer_handles, title='Layer', loc='upper right')
             ax.add_artist(leg1)
 
-        # (2) Network legend (always shown)
         network_handles = [
             Line2D([0], [0], marker='o', color='w',
                 markerfacecolor=network_colors[i], markeredgecolor='k',
@@ -574,7 +615,7 @@ class LaminarRestingState:
         ax.legend(handles=network_handles, title='RSN',
                 bbox_to_anchor=(1.32, 1), loc='upper left')
 
-        # --- save ---
+        # Save
         plt.tight_layout()
         eigstr = f"{x_dim}{y_dim}"
         outdir = f"{self.data_dir}/{name}"
@@ -586,7 +627,6 @@ class LaminarRestingState:
         print("Saved embedding plot to:", outpath)
 
 
-
     def plotScatterWithGlobalCorrelation(self,
                                         eigvecs,
                                         name,
@@ -596,89 +636,148 @@ class LaminarRestingState:
                                         x_label="Emb1",
                                         y_label="Emb2",
                                         fname=None,
-                                        network_cmap="tab20",
-                                        dot_size=12):
+                                        network_cmap="tab10",
+                                        dot_size=12,
+                                        # NEW:
+                                        atlas='schaefer',               # 'schaefer' (7-net) or 'custom'
+                                        schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
+                                        schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
+                                        ):        
         """
-        eigvecs : (360×d)  or (1080×d) array
-                rows ordered as [deep; mid; sup] if 1080.
+        eigvecs : (N×d) or (3N×d) array.
+                If 3N, rows ordered as [Deep; Middle; Superficial] blocks of size N.
+        When atlas='schaefer', parcels are assumed ordered [LH parcels..., RH parcels...]
+        with each hemi ordered by **sorted label keys** from the .label.gii files.
         """
         import os, numpy as np, matplotlib.pyplot as plt
         from matplotlib.lines import Line2D
         from scipy.stats import pearsonr
+        import nibabel as nib
 
-        # --------------------------------------------------  infer rows / mode
+        # ---------------- helpers ----------------
+        def _load_label_gii(path):
+            g = nib.load(path)
+            labs = np.asarray(g.agg_data(), dtype=int).squeeze()
+            lt = g.labeltable
+            key_to_name = {lab.key: lab.label for lab in lt.labels}
+            return labs, key_to_name
+
+        def _schaefer7_from_name(name: str) -> int:
+            n = name.lower()
+            if 'vis' in n: return 0                  # Visual
+            if 'som' in n or 'sommot' in n: return 1 # Somatomotor
+            if 'dorsattn' in n or ('dors' in n and 'attn' in n): return 2  # Dorsal Attn
+            if 'ventattn' in n or 'salventattn' in n or ('vent' in n and 'attn' in n) or 'sal' in n: return 3  # Ventral/Salience
+            if 'limbic' in n: return 4
+            if 'cont' in n or 'control' in n or 'frontoparietal' in n or 'fp' in n: return 5  # Control/FP
+            if 'default' in n: return 6
+            raise ValueError(f"Unrecognized Schaefer-7 network in label name: {name}")
+
+        # ---------------- build per-parcel network vector ----------------
+        if atlas.lower() == 'schaefer':
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("For atlas='schaefer', provide schaefer_label_L and schaefer_label_R (.label.gii on fs_LR 32k).")
+
+            L_lab, L_map = _load_label_gii(schaefer_label_L)
+            R_lab, R_map = _load_label_gii(schaefer_label_R)
+            uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+            uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+
+            # networks0 in parcel order [LH..., RH...]
+            networks0 = []
+            for k in uL:
+                networks0.append(_schaefer7_from_name(L_map[k]))
+            for k in uR:
+                networks0.append(_schaefer7_from_name(R_map[k]))
+            networks0 = np.asarray(networks0, dtype=int)
+            N = networks0.size
+
+            # default 7-network labels (if not provided)
+            if network_labels is None:
+                network_labels = ['Visual', 'Somatomotor', 'Dorsal Attn',
+                                'Ventral/Salience', 'Limbic', 'Control', 'Default']
+        else:
+            # Fallback to your existing text file (expects length N and values 1..K)
+            cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
+            networks0 = cats0 - 1
+            N = networks0.size
+            if network_labels is None:
+                network_labels = [
+                    "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                    "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                    "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+                ]
+
+        # ---------------- infer rows / mode ----------------
         nrows, ndims = eigvecs.shape
-        N = getattr(self, "N", 360)
-        mode = "multilayer" if nrows == 3 * N else "single"
+        if nrows == 3 * N:
+            mode = "multilayer"
+        elif nrows == N:
+            mode = "single"
+        else:
+            if nrows % 3 == 0 and (nrows // 3) == N:
+                mode = "multilayer"
+            else:
+                raise ValueError(f"eigvecs has {nrows} rows, but atlas implies N={N} parcels (expected {N} or {3*N}).")
 
-        # --------------------------------------------------  parse dims (accept 1-based)
+        # ---------------- parse dims (accept 1-based) ----------------
         x_dim, y_dim = eigvecs_to_plot
         if x_dim >= ndims or y_dim >= ndims:
             x_dim, y_dim = x_dim - 1, y_dim - 1
-        assert 0 <= x_dim < ndims and 0 <= y_dim < ndims, "dim index out of range"
+        if not (0 <= x_dim < ndims and 0 <= y_dim < ndims):
+            raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}]")
 
-        # --------------------------------------------------  RSN labels & colours
-        if network_labels is None:
-            network_labels = [
-                "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
-                "Dorsal-Attentional","Language","Frontoparietal","Auditory",
-                "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
-            ]
-        cmap = plt.get_cmap(network_cmap, len(network_labels))
-        net_colours = [cmap(i) for i in range(len(network_labels))]
-
-        # 360-parcel RSN index file (1-12 → 0-11)
-        nets0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int) - 1
-        assert nets0.size == N, "network file length mismatch"
-
+        # ---------------- expand networks to multilayer if needed ----------------
         if mode == "multilayer":
-            nets = np.tile(nets0, 3)
-            layers = np.repeat([0,1,2], N)
-            shapes = ['o','s','^']
-            if layer_labels is None: layer_labels = ["Deep","Middle","Superficial"]
+            nets = np.tile(networks0, 3)           # (3N,)
+            layers = np.repeat([0, 1, 2], N)       # Deep/Middle/Superficial (your order)
+            shapes = ['o', 's', '^']
+            if layer_labels is None: layer_labels = ["Deep", "Middle", "Superficial"]
         else:
-            nets = nets0
+            nets = networks0
             layers = np.zeros(N, dtype=int)
             shapes = ['o']
             if layer_labels is None: layer_labels = ["AcrossLayers"]
 
-        # --------------------------------------------------  scatter
-        fig, ax = plt.subplots(figsize=(7,7))
+        # ---------------- colours ----------------
+        cmap = plt.get_cmap(network_cmap, len(network_labels))
+        net_colours = [cmap(i) for i in range(len(network_labels))]
+
+        # ---------------- scatter ----------------
+        fig, ax = plt.subplots(figsize=(7, 7))
         for lyr in np.unique(layers):
             for net in np.unique(nets):
                 m = (layers == lyr) & (nets == net)
                 if not m.any(): continue
-                ax.scatter(eigvecs[m, x_dim],
-                        eigvecs[m, y_dim],
+                ax.scatter(eigvecs[m, x_dim], eigvecs[m, y_dim],
                         s=dot_size,
-                        marker=shapes[int(lyr)],
+                        marker=shapes[int(lyr if mode == "multilayer" else 0)],
                         facecolor=net_colours[int(net)],
                         edgecolor='k', linewidths=0.25, alpha=0.8)
 
-        # --------------------------------------------------  global correlation
+        # ---------------- global correlation & regression ----------------
         r, p = pearsonr(eigvecs[:, x_dim], eigvecs[:, y_dim])
-        # regression line
-        coeffs = np.polyfit(eigvecs[:, x_dim], eigvecs[:, y_dim], 1)
         xs = np.linspace(*ax.get_xlim(), 200)
-        ax.plot(xs, coeffs[0]*xs + coeffs[1], color='k', ls='--', lw=1)
+        slope, intercept = np.polyfit(eigvecs[:, x_dim], eigvecs[:, y_dim], 1)
+        ax.plot(xs, slope * xs + intercept, color='k', ls='--', lw=1)
 
         txt = f"r = {r:.3f}\np = {p:.3g}"
         bbox_props = dict(boxstyle="round,pad=0.25", fc="w", ec="k", lw=0.4)
         ax.text(-0.05, 1.06, txt, ha="right", va="bottom",
-        transform=ax.transAxes, fontsize=5, bbox=bbox_props)
+                transform=ax.transAxes, fontsize=5, bbox=bbox_props)
 
         # labels / square axis
         ax.set_xlabel(x_label); ax.set_ylabel(y_label)
-        ax.set_title("RSN-coloured embedding" + (" (layers as shapes)" if mode=="multilayer" else ""))
+        ax.set_title("Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
         ax.set_aspect('equal', adjustable='box')
 
-        # --------------------------------------------------  legends
+        # ---------------- legends ----------------
         net_handles = [Line2D([0],[0], marker='o', color='w',
                             markerfacecolor=net_colours[i], markeredgecolor='k',
                             markersize=8, label=network_labels[i])
                     for i in np.unique(nets)]
         ax.legend(handles=net_handles, title="RSN",
-                bbox_to_anchor=(1.32,1), loc='upper left')
+                bbox_to_anchor=(1.32, 1), loc='upper left')
 
         if mode == "multilayer":
             lyr_handles = [Line2D([0],[0], marker=shapes[i], color='w',
@@ -686,8 +785,9 @@ class LaminarRestingState:
                         for i in np.unique(layers)]
             ax.add_artist(ax.legend(handles=lyr_handles, title="Layer", loc='upper right'))
 
-        # --------------------------------------------------  save
-        outdir = os.path.join(self.data_dir, name); os.makedirs(outdir, exist_ok=True)
+        # ---------------- save ----------------
+        outdir = os.path.join(self.data_dir, name)
+        os.makedirs(outdir, exist_ok=True)
         if fname is None:
             fname = f"ScatterCorr_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}.png"
         fig.tight_layout()
@@ -696,6 +796,44 @@ class LaminarRestingState:
         print("Saved:", os.path.join(outdir, fname))
 
 
+    def plot_horizontal_correlation_bar(self, layers, gradient, outdir, fname, layer_names=None, title="Effective connectivity and intralaminar difference gradients",
+                                        xlabel="Correlation with efferent-afferent effective conn. gradient", xlim=(-1.0, 1.0), save_path=None):
+
+        from scipy.stats import pearsonr
+
+        layers = [np.asarray(l).ravel() for l in layers]
+        gradient = np.asarray(gradient).ravel()
+
+        if any(len(l) != len(gradient) for l in layers):
+            raise ValueError("All layer vectors must have the same length as the gradient.")
+
+        n = len(layers)
+        if layer_names is None:
+            layer_names = [f"Layer {i+1}" for i in range(n)]
+
+        # Compute correlations and p-values
+        corrs, pvals = [], []
+        for l in layers:
+            r, p = pearsonr(gradient, l)
+            corrs.append(r)
+            pvals.append(p)
+
+        print(corrs)
+        print(pvals)
+
+        fig, ax = plt.subplots(figsize=(7, 3.2))
+        y = np.arange(n)
+        ax.barh(y, corrs)        # horizontal bars
+        ax.set_yticks(y, labels=layer_names)
+        ax.set_xlim(*xlim)
+        ax.axvline(0)            # reference line at zero
+        ax.set_xlabel(xlabel)
+        ax.set_title(title)
+        ax.invert_yaxis()        # Layer 1 at top
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
 
 
     def plotTwoDimEmbedding_byNetwork(self,
@@ -863,131 +1001,188 @@ class LaminarRestingState:
 
         print("All brain maps saved successfully!")
 
-    def __plot_on_mmhcp_surface_multipleLayers__(self, Xp, eigValue, name, vmin=None, vmax=None, cm = "RdBu_r", noSubcortical=True, titles=["Deep","Middle","Superficial","Average"], folder_name="eigenvector_layers"):
+    def __plot_on_mmhcp_surface_multipleLayers__(
+        self,
+        Xp,
+        eigValue,
+        name,
+        vmin=None,
+        vmax=None,
+        cm="RdBu_r",
+        noSubcortical=True,
+        titles=["Deep", "Middle", "Superficial", "Average"],
+        folder_name="eigenvector_layers",
+        # NEW:
+        atlas="schaefer",                             # "mmp" (Glasser) or "schaefer"
+        schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
+        schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
+    ):
+        """
+        Xp: (n_parcels, n_layers) array, ordered [LH parcels..., RH parcels...].
+            For Schaefer, order must follow sorted label keys per hemi.
+        atlas:
+            - "mmp": uses hcp.mmp + hcp.unparcellate (your current setup)
+            - "schaefer": uses L/R .label.gii provided via schaefer_label_L/R
+        """
+        import os
+        import numpy as np
+        import nibabel as nib
+        import matplotlib.pyplot as plt
+        from nilearn import plotting
 
-        os.makedirs(f"{self.data_dir}/{name}/{folder_name}", exist_ok=True)  # Create folder for layer-wise maps
+        os.makedirs(f"{self.data_dir}/{name}/{folder_name}", exist_ok=True)
 
-        mmp_labels = hcp.mmp.labels  # mmp = Glasser parcellation
-        
+        # -------- helpers --------
+        def _load_label_gii(path):
+            g = nib.load(path)
+            # label.gii -> integer keys per vertex; 0 = medial wall
+            return np.asarray(g.agg_data(), dtype=int).squeeze()
+
+        def _build_rank_map(keys):
+            u = np.unique(keys[keys > 0])
+            return {k: i for i, k in enumerate(sorted(u))}, len(u)
+
+        def _map_parcels_to_vertices_schaefer(vals_lr, L_lab, R_lab, L_rank, R_rank, n_hemi):
+            """vals_lr has length 2*n_hemi in order [LH..., RH...]"""
+            # Left
+            left = np.full(L_lab.shape, np.nan, float)
+            mL = L_lab > 0
+            if np.any(mL):
+                # map each vertex's parcel key -> index -> value
+                idxL = np.array([L_rank[k] for k in L_lab[mL]])
+                left[mL] = vals_lr[idxL]
+            # Right
+            right = np.full(R_lab.shape, np.nan, float)
+            mR = R_lab > 0
+            if np.any(mR):
+                idxR = np.array([R_rank[k] for k in R_lab[mR]])
+                right[mR] = vals_lr[n_hemi + idxR]
+            return left, right
+
+        # -------- load/prepare atlas mapping --------
+        if atlas.lower() == "mmp":
+            # MMP: we can use your existing utilities
+            mmp_labels = hcp.mmp.labels
+            n_parcels_target = len(mmp_labels)
+            # function to map one layer (1D parcel vector) -> (left_vertices, right_vertices)
+            def map_layer(vals_lr):
+                vtx_both = hcp.cortex_data(hcp.unparcellate(vals_lr, hcp.mmp))
+                nL = len(vtx_both) // 2
+                return vtx_both[:nL], vtx_both[nL:]
+
+        elif atlas.lower() == "schaefer":
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("For atlas='schaefer', provide schaefer_label_L and schaefer_label_R (.label.gii on fs_LR 32k).")
+            L_lab = _load_label_gii(schaefer_label_L)
+            R_lab = _load_label_gii(schaefer_label_R)
+            L_rank, nL_parcels = _build_rank_map(L_lab)
+            R_rank, nR_parcels = _build_rank_map(R_lab)
+            assert nL_parcels == nR_parcels, f"Unequal parcels per hemi: L={nL_parcels}, R={nR_parcels}"
+            n_parcels_target = 2 * nL_parcels
+            def map_layer(vals_lr):
+                return _map_parcels_to_vertices_schaefer(vals_lr, L_lab, R_lab, L_rank, R_rank, nL_parcels)
+
+        else:
+            raise ValueError("atlas must be 'mmp' or 'schaefer'.")
+
+        # -------- pad/truncate parcels if requested --------
+        Xp = np.asarray(Xp)
+        if Xp.ndim != 2:
+            raise ValueError("Xp must be a 2D array of shape (n_parcels, n_layers).")
+
+        current_length = Xp.shape[0]
         if noSubcortical:
-            current_length = len(Xp[:, 0])  # Get the number of parcels (rows)
-            print(f'Current length/num of parcels: {current_length}')
-            target_length = len(mmp_labels)  # Target length is the number of regions (parcels)
-            zeros_to_add = target_length - current_length
-            print(f'Zeros to add: {zeros_to_add}')
-            Xp = np.concatenate((Xp, np.zeros((zeros_to_add, Xp.shape[1]))), axis=0)    
+            zeros_to_add = n_parcels_target - current_length
+            if zeros_to_add > 0:
+                Xp = np.concatenate((Xp, np.zeros((zeros_to_add, Xp.shape[1]))), axis=0)
+            elif zeros_to_add < 0:
+                raise ValueError(f"Xp has {current_length} rows but atlas expects {n_parcels_target} (LH+RH).")
+        else:
+            if current_length != n_parcels_target:
+                raise ValueError(f"Xp has {current_length} rows but atlas expects {n_parcels_target} (LH+RH).")
 
-        orientations = ["lateral", "medial", "medial", "lateral"]
+        # -------- compute global vmin/vmax across all layers --------
+        left_right_layers = []
+        for i in range(Xp.shape[1]):
+            left_i, right_i = map_layer(Xp[:, i])
+            left_right_layers.append((left_i, right_i))
 
-        # Determine the global min and max values across all layers
-        all_data = np.hstack([hcp.cortex_data(hcp.unparcellate(Xp[:, i], hcp.mmp)) for i in range(Xp.shape[1])])
+        # stack all vertex data to choose robust limits
+        all_data = np.hstack([np.concatenate((L, R)) for (L, R) in left_right_layers])
         if vmin is None or vmax is None:
-            vmin, vmax = np.nanpercentile(all_data, [2, 98])  #np.min(all_data), np.max(all_data)
-        
-        # Create a figure with multiple rows and shared colorbar
+            # robust 2–98% range
+            finite = np.isfinite(all_data)
+            if not np.any(finite):
+                raise ValueError("All mapped values are NaN.")
+            vmin, vmax = np.nanpercentile(all_data[finite], [2, 98])
+            if vmin == vmax:
+                vmin -= 1e-6
+                vmax += 1e-6
+
+        # -------- figure & plotting --------
+        orientations = ["lateral", "medial", "medial", "lateral"]
         fig, axes = plt.subplots(
             Xp.shape[1], len(orientations),
             figsize=(20, 5 * Xp.shape[1]),
             subplot_kw={"projection": "3d"}
         )
 
-        # Loop over the layers (rows)
         for i in range(Xp.shape[1]):
-            layer_data = hcp.cortex_data(hcp.unparcellate(Xp[:, i], hcp.mmp))
+            left_i, right_i = left_right_layers[i]
+            row_title = titles[i] if (titles is not None and i < len(titles)) else f"Layer {i+1}"
 
-            # titles = [["Layer 1 Lateral L", "Layer 1 Medial L", "Layer 1 Lateral R",  "Layer 1 Medial R"], 
-            #             ["Layer 2 Lateral L", "Layer 2 Medial L", "Layer 2 Lateral R",  "Layer 2 Medial R"],
-            #             ["Layer 3 Lateral L", "Layer 3 Medial L", "Layer 3 Lateral R",  "Layer 3 Medial R"]]
-            
-            if titles is not None and i < len(titles):
-                row_title = titles[i]
-            else:
-                row_title = f"Layer {i+1}"
-
-                
-            # Loop over the views (columns)
             for j, view in enumerate(orientations):
                 try:
                     ax = axes[i, j]
-                except:
+                except Exception:
                     ax = axes[j]
-                
-                if j==0 or j==1:
+
+                if j in (0, 1):  # left hemi views
                     plotting.plot_surf_stat_map(
                         hcp.mesh.inflated_left,
-                        layer_data[:len(layer_data) // 2],
+                        left_i,
                         view=view,
-                        colorbar=False,  # Suppress individual colorbars
+                        colorbar=False,
                         bg_map=hcp.mesh.sulc_left,
                         bg_on_data=True,
                         darkness=0.3,
                         axes=ax,
                         figure=fig,
                         cmap=cm,
-                        vmin=vmin, vmax=vmax,  # Ensure consistent color scale
+                        vmin=vmin, vmax=vmax,
                         symmetric_cbar=False,
                     )
-                else:
+                else:  # right hemi views
                     plotting.plot_surf_stat_map(
                         hcp.mesh.inflated_right,
-                        layer_data[len(layer_data) // 2:],
+                        right_i,
                         view=view,
-                        colorbar=False,  # Suppress individual colorbars
+                        colorbar=False,
                         bg_map=hcp.mesh.sulc_right,
                         bg_on_data=True,
                         darkness=0.3,
                         axes=ax,
                         figure=fig,
                         cmap=cm,
-                        vmin=vmin, vmax=vmax,  # Ensure consistent color scale
+                        vmin=vmin, vmax=vmax,
                         symmetric_cbar=False,
                     )
 
-                # ax.set_title(titles[i][j], fontsize=14)
                 ax.set_title(f"{row_title} - {orientations[j].capitalize()}", fontsize=14)
 
-        # Add a single colorbar
-        cbar_ax = fig.add_axes([0.92, 0.2, 0.02, 0.6])  # Positioning of colorbar
-        norm = plt.cm.ScalarMappable(cmap=cm, norm=plt.Normalize(vmin=vmin, vmax=vmax))
-        fig.colorbar(norm, cax=cbar_ax)
+        # shared colorbar
+        cbar_ax = fig.add_axes([0.92, 0.2, 0.02, 0.6])
+        sm = plt.cm.ScalarMappable(cmap=plt.get_cmap(cm), norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        sm.set_array([])
+        fig.colorbar(sm, cax=cbar_ax)
 
         plt.suptitle(f"Eigenvector {eigValue}", fontsize=16)
-        print(f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png")
-        plt.savefig(f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png", facecolor="white")
+        out_path = f"{self.data_dir}/{name}/{folder_name}/eigenvectorSurface_{eigValue}_twoHem.png"
+        print(out_path)
+        plt.savefig(out_path, facecolor="white", dpi=300)
         plt.close()
 
-
-    def __plot_on_volume__(self, layer_imgs, eigValue, name):
-        
-        fig, axes = plt.subplots(1, self.num_layers, figsize=(15, 5))
-        combined_data = np.concatenate([img.get_fdata().flatten() for img in layer_imgs])
-        vmin, vmax = np.percentile(combined_data, [2, 98])  # Robust scaling
-
-        ref_img = layer_imgs[0]
-        ref_shape = ref_img.shape
-        
-        warnings.warn("Need to implement the plotting of the middle slice in all dimensions.")
-        mid_cut_coords = (ref_shape[0] // 2, ref_shape[1] // 2, ref_shape[2] // 2)  # Middle slice in (x, y, z)
-
-        warnings.warn("Hard coded anatomical image.")
-
-        for layer_idx, layer_img in enumerate(layer_imgs):
-            plotting.plot_stat_map(
-                layer_img,
-                bg_img="../../highRes_resting/derivatives/ref_anat/sub-01/fs_t1_in-func.nii",
-                cmap="coolwarm",
-                threshold=None,
-                vmin=vmin, vmax=vmax,
-                axes=axes[layer_idx],
-                colorbar=(layer_idx == self.num_layers - 1),
-                #cut_coords=mid_cut_coords
-            )
-            axes[layer_idx].set_title(f"Layer {layer_idx + 1}")
-
-        plt.suptitle(f"Eigenvector {eigValue}")
-        plt.savefig(f"{self.data_dir}/{name}/eigenvector_layers/eigenvector_{eigValue}.png", dpi=500)
-        plt.close()
-
+        return out_path
 
     def plotScree(self, eigvals, name, sort=False):
             

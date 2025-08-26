@@ -1,7 +1,10 @@
 import os
 import numpy as np
 import nibabel as nib
+from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
+import laminarRestingState as lrs
+import laminarAnalyses as laman
 
 # (your unused imports removed)
 # import laminarRestingState as lrs
@@ -54,28 +57,50 @@ rel_vert_L = normalize_vertices_to_relative(vert_L)  # (v_L, 6)
 rel_vert_R = normalize_vertices_to_relative(vert_R)  # (v_R, 6)
 
 means_L = parcel_means_from_vertices('L', rel_vert_L)
+print(means_L.shape)
 means_R = parcel_means_from_vertices('R', rel_vert_R)
 
 # Stack hemispheres => (360, 6) for MMP-360 total
 rel_thickness_matrix = np.vstack([means_L, means_R])  # (n_parcels=360, n_layers=6)
 
-# ---- Partial correlation across parcels controlling the global layer profile ----
-# Global profile g is the across-parcel mean of the 6 relative layers
-g = rel_thickness_matrix.mean(axis=0)  # shape (6,)
+# # ---- Partial correlation across parcels controlling the global layer profile ----
+# # Global profile g is the across-parcel mean of the 6 relative layers
+# g = rel_thickness_matrix.mean(axis=0)  # shape (6,)
 
-# Build regression (with intercept) once, and residualize all parcels in one shot:
-# For each parcel vector y (length 6), regress y ~ g + intercept; residualize; then corr across parcels.
-G = np.column_stack([g, np.ones_like(g)])  # (6, 2)
-GtG_inv = np.linalg.inv(G.T @ G)
-H = G @ GtG_inv @ G.T                       # Hat matrix (6x6)
-I = np.eye(6)
+# # Build regression (with intercept) once, and residualize all parcels in one shot:
+# # For each parcel vector y (length 6), regress y ~ g + intercept; residualize; then corr across parcels.
+# G = np.column_stack([g, np.ones_like(g)])  # (6, 2)
+# GtG_inv = np.linalg.inv(G.T @ G)
+# H = G @ GtG_inv @ G.T                       # Hat matrix (6x6)
+# I = np.eye(6)
 
-Y = rel_thickness_matrix.T                  # (6, 360) — columns are parcels
-Y_res = (I - H) @ Y                         # residuals (6, 360)
-residuals = Y_res.T                         # (360, 6)
+# Y = rel_thickness_matrix.T                  # (6, 360) — columns are parcels
+# Y_res = (I - H) @ Y                         # residuals (6, 360)
+# residuals = Y_res.T                         # (360, 6)
 
-# Pearson correlation across parcels on residual 6-vectors
-r_matrix = np.corrcoef(residuals, rowvar=True)
+# # Pearson correlation across parcels on residual 6-vectors
+# r_matrix = np.corrcoef(residuals, rowvar=True)
+
+# g = rel_thickness_matrix.mean(axis=0)  # shape (6,)
+g = rel_thickness_matrix.mean(axis=0) 
+covariate = np.column_stack([g, np.ones_like(g)])  # (6, 2)
+
+n_parcels, n_layers = rel_thickness_matrix.shape
+residuals = np.zeros_like(rel_thickness_matrix)
+lm = LinearRegression(fit_intercept=True)
+
+for i in range(n_layers):
+    y = rel_thickness_matrix[:, i]
+    X = covariate.reshape(-1, 1)
+    lm.fit(X, y)
+    residuals[:, i] = y - lm.predict(X)
+
+adj_matrix = np.corrcoef(residuals, rowvar=True)
+
+
+
+
+np.fill_diagonal(r_matrix, 0)
 
 # ---- Fisher r→z transform (clipped to avoid infinities) ----
 r_clipped = np.clip(r_matrix, -0.999999, 0.999999)
@@ -93,3 +118,18 @@ plt.title("Parcel × Parcel (MMP-360): Relative Laminar Thickness (controlled gl
 plt.tight_layout()
 plt.savefig(f"{output_dir}/PartialCorrelation_RelativeThickness_FisherZ.png", bbox_inches="tight")
 plt.close()
+
+
+
+restStateSub = lrs.LaminarRestingState(output_dir, 360, 0, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")    
+M = z_matrix
+
+print(M.shape)
+
+n_components = 5
+G = laman.run_gradient_analysis(M, n_components=n_components, random_state=13011992)
+np.save(os.path.join(output_dir, 'gradients_lamThick.npy'), G)
+
+for i in range(n_components):
+    restStateSub.__plot_on_mmhcp_surface_multipleLayers__(G[:,[i]], f'BigBrainLamThick_{i}', "PartialCorr")        
+
