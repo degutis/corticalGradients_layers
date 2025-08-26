@@ -6,19 +6,44 @@ from scipy import stats
 from scipy.optimize import lsq_linear
 import matplotlib.pyplot as plt
 from brainspace.gradient import GradientMaps
+import matplotlib as mpl
+from brainspace.gradient.kernels import compute_affinity
 
 
-def run_gradient_analysis(conn_matrix, n_components=10, kernel="cosine", approach="dm", random_state=0):
+
+
+def run_gradient_analysis(conn_matrix, n_components=10, kernel="cosine", approach="dm", random_state=0, sparsity=0.9):
     
     """
     conn_matrix: (1080 x 1080) supra-adjacency (deep/mid/sup on diagonal blocks, identity couplings off-diagonal).
     Returns G: (1080 x n_components) gradient coordinates in a joint embedding.
     """
-
     gm = GradientMaps(kernel=kernel, approach=approach, n_components=n_components, random_state=random_state)
-    gm.fit(conn_matrix)             # BrainSpace builds the affinity & diffusion map internally
-    return gm.gradients_            # shape: (1080, n_components)
+    # gm.fit(conn_matrix)             # BrainSpace builds the affinity & diffusion map internally
+    gm.fit(conn_matrix, sparsity=sparsity)             # BrainSpace builds the affinity & diffusion map internally
+    return gm.gradients_           # shape: (1080, n_components)
     
+
+def run_gradient_analysis_affinity(conn_matrix, n_components=10, kernel="cosine", approach="dm", random_state=0, sparsity=0.9):
+
+    from brainspace.gradient.kernels import compute_affinity
+    from brainspace.gradient import GradientMaps
+
+    # X: (n_samples × n_features), e.g., regions × connectivity profile
+    A = compute_affinity(
+        conn_matrix,
+        kernel=kernel,       # or 'pearson', 'spearman', 'normalized_angle', 'gaussian'
+        sparsity=sparsity,          # set None for no sparsification
+        non_negative=True      # set False if you want to keep negatives
+    )
+
+    gm = GradientMaps(n_components=n_components, approach=approach, kernel=None, random_state=random_state)
+    gm.fit(A)    
+    
+    return gm.gradients_, A
+
+
+
 def _split_layers(G1080, N=360):
     assert G1080.ndim == 2 and G1080.shape[0] == 3*N, f"Expected (3*{N} x k); got {G1080.shape}"
     return G1080[0:N, :], G1080[N:2*N, :], G1080[2*N:3*N, :]
@@ -54,40 +79,58 @@ def inter_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
     # (N x 3k) laminar profile per parcel (unit rows → cosine similarity via dot)
     P = np.concatenate([Ud, Um, Us], axis=1)
 
+    mpl.rcParams['svg.fonttype'] = 'none'   # keep text as <text>, not paths
+    mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
+
     plt.figure(figsize=(6, 6))
     plt.imshow(P, cmap="RdBu_r")
     plt.title("ConcatMatrix P - inter areal dis")
-    plt.savefig(f"{outputDir}/ConcatMatrixP_inter.svg", bbox_inches="tight")
+    plt.savefig(f"{outputDir}/ConcatMatrixP_inter.svg", bbox_inches="tight", format="svg")
     plt.close()
 
 
     # cosine distance matrix
     S = P @ P.T              # similarities, diag ~ 1
     D = 1.0 - S              # distances
+
+    D_deep = 1.0 - (Ud @ Ud.T)
+    D_mid = 1.0 - (Um @ Um.T)
+    D_sup = 1.0 - (Us @ Us.T)
+
     np.fill_diagonal(D, 0.0)
+    np.fill_diagonal(D_deep, 0.0)
+    np.fill_diagonal(D_mid, 0.0)
+    np.fill_diagonal(D_sup, 0.0)
 
     plt.figure(figsize=(6, 6))
     plt.imshow(D, cmap="RdBu_r")
     plt.title("Distance matrix - inter areal dis")
-    plt.savefig(f"{outputDir}/Matrix_interArealDis.svg", bbox_inches="tight")
+    plt.savefig(f"{outputDir}/Matrix_interArealDis.svg", bbox_inches="tight", format="svg")
     plt.close()
 
     distanceSum = D.sum(axis=1) / (N - 1)
 
+    distanceSum_deep = D_deep.sum(axis=1) / (N - 1)
+    distanceSum_mid = D_mid.sum(axis=1) / (N - 1)
+    distanceSum_sup = D_sup.sum(axis=1) / (N - 1)
+
     plt.figure(figsize=(10, 10))
     plt.imshow(distanceSum[:, np.newaxis], cmap="RdBu_r")
     plt.title("Distance sum - inter areal dis")
-    plt.savefig(f"{outputDir}/Matrix_interArealDisSum.svg", bbox_inches="tight")
+    plt.savefig(f"{outputDir}/Matrix_interArealDisSum.svg", bbox_inches="tight", format="svg")
     plt.close()
 
-    return distanceSum
+    return distanceSum, distanceSum_deep, distanceSum_mid, distanceSum_sup
 
 def plotMatrix(M, outputDir, name):
+
+    mpl.rcParams['svg.fonttype'] = 'none'   # keep text as <text>, not paths
+    mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
 
     plt.figure(figsize=(6, 6))
     plt.imshow(M, cmap="RdBu_r")
     plt.title("Adjacency matrix")
-    plt.savefig(f"{outputDir}/{name}", bbox_inches="tight")
+    plt.savefig(f"{outputDir}/{name}", bbox_inches="tight", format="svg")
     plt.close()
 
 
@@ -108,6 +151,10 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
 
     Ud, Um, Us = _l2_normalize_rows(Gd), _l2_normalize_rows(Gm), _l2_normalize_rows(Gs)
 
+    mpl.rcParams['svg.fonttype'] = 'none'   # keep text as <text>, not paths
+    mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
+
+
     if mode == "to_mean":
         # Ubar = _l2_normalize_rows((Ud + Um + Us) / 3.0)
         Ubar = _l2_normalize_rows((Gd + Gm + Gs) / 3.0)
@@ -116,7 +163,7 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         plt.figure(figsize=(6, 6))
         plt.imshow(Ubar, cmap="RdBu_r")
         plt.title("Ubar - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_intraArealDis.svg", bbox_inches="tight")
+        plt.savefig(f"{outputDir}/Matrix_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
         d_deep = 1.0 - np.einsum("ij,ij->i", Ud, Ubar)
@@ -125,7 +172,7 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         plt.figure(figsize=(10, 10))
         plt.imshow(d_deep[:,np.newaxis], cmap="RdBu_r")
         plt.title("D_deep - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_deep_intraArealDis.svg", bbox_inches="tight")
+        plt.savefig(f"{outputDir}/Matrix_deep_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
 
@@ -134,7 +181,7 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         plt.figure(figsize=(10, 10))
         plt.imshow(d_mid[:,np.newaxis], cmap="RdBu_r")
         plt.title("D_mid - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_mid_intraArealDis.svg", bbox_inches="tight")
+        plt.savefig(f"{outputDir}/Matrix_mid_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
         d_sup  = 1.0 - np.einsum("ij,ij->i", Us, Ubar)
@@ -142,7 +189,7 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         plt.figure(figsize=(10, 10))
         plt.imshow(d_sup[:,np.newaxis], cmap="RdBu_r")
         plt.title("D_sup - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_sup_intraArealDis.svg", bbox_inches="tight")
+        plt.savefig(f"{outputDir}/Matrix_sup_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
 
@@ -151,7 +198,7 @@ def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False
         plt.figure(figsize=(10, 10))
         plt.imshow(d_intraMean[:,np.newaxis], cmap="RdBu_r")
         plt.title("D_intraMean - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_mean_intraArealDis.svg", bbox_inches="tight")
+        plt.savefig(f"{outputDir}/Matrix_mean_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
 
@@ -171,9 +218,10 @@ def plotFlatMap(
     M,
     outdir,
     outname,
-    inputdir_1="/home/degutis/repos/HCP_WB_parcels",
+    inputdir_1="",
     inputdir_2="/home/degutis/repos/HumanCorticalParcellations",
     cmap="RdBu_r",
+    HCP=False,
     vmin=None, vmax=None,
     symmetric=False,         # center color range at 0 if True
     rasterize=False          # set True if SVGs get too heavy
@@ -197,19 +245,47 @@ def plotFlatMap(
     outpath = os.path.join(outdir, outname)
 
     vals = np.asarray(M).reshape(-1)
-    assert vals.shape[0] == 360, f"Expected 360 values, got {vals.shape}"
+    assert vals.size % 2 == 0, f"Expected even number of parcel values (LH+RH), got {vals.shape}"
+    
+    if HCP:
+        inputdir_1 = "/home/degutis/repos/HCP_WB_parcels"
+        # ---- Load per-vertex labels (0=medial wall, 1..180 per hemi)
+        L_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.L.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
+        R_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.R.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
 
-    # ---- Load per-vertex labels (0=medial wall, 1..180 per hemi)
-    L_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.L.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
-    R_lab = nib.load(os.path.join(inputdir_1, "GlasserAtlas.R.32k_fs_LR.label.gii")).agg_data().astype(int).squeeze()
+        # ---- Map parcel values -> per-vertex metrics
+        metric_L = np.full(L_lab.shape, np.nan, float)
+        metric_R = np.full(R_lab.shape, np.nan, float)
+        mL = L_lab > 0
+        mR = R_lab > 0
+        metric_L[mL] = vals[L_lab[mL] - 1]            # LH labels 1..180 -> vals[0..179]
+        metric_R[mR] = vals[180 + R_lab[mR] - 1]      # RH labels 1..180 -> vals[180..359]
 
-    # ---- Map parcel values -> per-vertex metrics
-    metric_L = np.full(L_lab.shape, np.nan, float)
-    metric_R = np.full(R_lab.shape, np.nan, float)
-    mL = L_lab > 0
-    mR = R_lab > 0
-    metric_L[mL] = vals[L_lab[mL] - 1]            # LH labels 1..180 -> vals[0..179]
-    metric_R[mR] = vals[180 + R_lab[mR] - 1]      # RH labels 1..180 -> vals[180..359]
+    else:
+        inputdir_1 = "/home/degutis/repos/SchaeferAtlas"
+
+        L_lab = nib.load(os.path.join(inputdir_1, "Schaefer400.L.label.gii")).agg_data().astype(int).squeeze()
+        R_lab = nib.load(os.path.join(inputdir_1, "Schaefer400.R.label.gii")).agg_data().astype(int).squeeze()
+
+        n_total = vals.size
+        n_hemi  = n_total // 2
+        assert n_total % 2 == 0, "M should be [LH parcels..., RH parcels...]"
+
+        uL = np.unique(L_lab[L_lab > 0])
+        uR = np.unique(R_lab[R_lab > 0])
+        assert len(uL) == n_hemi and len(uR) == n_hemi, \
+            f"Expected {n_hemi} parcels per hemi; got {len(uL)} (L), {len(uR)} (R)."
+
+        L_rank = {k: i for i, k in enumerate(sorted(uL))}
+        R_rank = {k: i for i, k in enumerate(sorted(uR))}
+
+        metric_L = np.full(L_lab.shape, np.nan, float)
+        metric_R = np.full(R_lab.shape, np.nan, float)
+        mL = L_lab > 0
+        mR = R_lab > 0
+        metric_L[mL] = vals[[L_rank[k] for k in L_lab[mL]]]
+        metric_R[mR] = vals[n_hemi + np.array([R_rank[k] for k in R_lab[mR]])]
+
 
     # ---- Load flat meshes (coords, faces)
     def load_surf_xy(path):

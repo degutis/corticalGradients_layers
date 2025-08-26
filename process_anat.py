@@ -124,6 +124,12 @@ def process_ref_anat_subject(studyDataDir, subject):
         "R": "/home/degutis/repos/HCP_WB_parcels/GlasserAtlas.R.164k_fs_LR.label.gii",
     }
 
+    schaefer_labels = {
+        "L": "/home/degutis/repos/HCP_WB_parcels/Schaefer400_7net.L.164k_fs_LR.label.gii",
+        "R": "/home/degutis/repos/HCP_WB_parcels/Schaefer400_7net.R.164k_fs_LR.label.gii",
+    }
+    
+
     for hemi in ["L", "R"]:
         fs_LR_sphere = os.path.join(
             ciftify_dir, "MNINonLinear", f"{subject}.{hemi}.sphere.164k_fs_LR.surf.gii"
@@ -161,8 +167,8 @@ def process_ref_anat_subject(studyDataDir, subject):
             ]
         )
 
-        #        for atlas, labels in zip(["glasser", "md"], [glasser_labels, md_labels]):
-        for atlas, labels in zip(["glasser"], [glasser_labels]):
+        for atlas, labels in zip(["glasser", "schaefer"], [glasser_labels, schaefer_labels]):
+        # for atlas, labels in zip(["glasser"], [glasser_labels]):
             atlas_fs_LR_space = labels[hemi]
             atlas_native_surf = os.path.join(
                 ref_anat_dir, f"{subject}.{atlas}.{hemi}.native.label.gii"
@@ -201,8 +207,6 @@ def process_ref_anat_subject(studyDataDir, subject):
                 ],
                 check=True,
             )
-
-
 
 
 if __name__ == "__main__":
