@@ -1,6 +1,6 @@
 # export PATH=$PATH:/Users/karolis/Desktop/repos/MSM
 
-subject=sub-LAM004
+subject=sub-LAM021
 fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer
 
 ciftify_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ciftify/

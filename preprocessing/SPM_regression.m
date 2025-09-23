@@ -6,12 +6,16 @@ spm_jobman('initcfg');   % Initialize job manager
 
 TR = 3.29;
 
-subject = 'sub-LAM011'
+subject = 'sub-LAM021'
 
 funcDir = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','func',subject);
 
 funcFiles = dir(fullfile(funcDir, '*_NORDIC_mc.nii'));
 motionFiles = dir(fullfile(funcDir, '*_NORDIC_mc.par'));
+
+%funcFiles = dir(fullfile(funcDir, '*_mc.nii'));
+%motionFiles = dir(fullfile(funcDir, '*_mc.par'));
+
 
 atlas_file = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','ref_anat',subject,'HCP-MMP1_in-func.nii');
 atlas_file

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-subject=sub-LAM011
+subject=sub-LAM022
 # fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/${subject}/
 fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/${subject}/
 bold_file=${subject}_MEAN.nii
@@ -51,14 +51,14 @@ gunzip ${bold_file}.gz -f
 
 
 mask_file=mask_le1500.nii.gz
-fslmaths ${bold_file} -uthr 800 -bin ${mask_file}
+fslmaths ${bold_file} -uthr 1200 -bin ${mask_file}
 
 threshold_file=${bold_file_withoutExt}_n4_brain_thresh.nii
 fslmaths ${bold_file} -mas ${mask_file} ${threshold_file}.gz
 gunzip ${threshold_file}.gz -f
 
 bold_brain_file=${bold_file_withoutExt}_n4_brain2.nii
-bet ${threshold_file} ${bold_brain_file} -f 0.1
+bet ${threshold_file} ${bold_brain_file} -f 0.15
 bold_file=${bold_brain_file}
 gunzip ${bold_file}.gz -f
 

@@ -76,43 +76,43 @@ def process_ref_anat_subject(studyDataDir, subject):
      # clean up
     os.remove(os.path.join(ref_anat_dir, "fs_ribbon.nii"))
 
-    # # 4. calculate LAYNII depths
-    # area_files = {
-    #     ("lh", "white"): os.path.join(fs_dir, "surf", "lh.area"),
-    #     ("rh", "white"): os.path.join(fs_dir, "surf", "rh.area"),
-    #     ("lh", "pial"): os.path.join(fs_dir, "surf", "lh.area.pial"),
-    #     ("rh", "pial"): os.path.join(fs_dir, "surf", "rh.area.pial"),
-    # }
-    # for method in ["equivol", "equidist"]:
-    #     print(f"Calculating VDFS and layers using method: {method}...")
-    #     # vdfs_depths, vdfs_columns = vdfs.process_dc_voxeldepth_from_surfaces(
-    #     #     os.path.join(ref_anat_dir, "L.white.func.surf.gii"),
-    #     #     area_files["lh", "white"],
-    #     #     os.path.join(ref_anat_dir, "L.pial.func.surf.gii"),
-    #     #     area_files["lh", "pial"],
-    #     #     os.path.join(ref_anat_dir, "R.white.func.surf.gii"),
-    #     #     area_files["rh", "white"],
-    #     #     os.path.join(ref_anat_dir, "R.pial.func.surf.gii"),
-    #     #     area_files["rh", "pial"],
-    #     #     os.path.join(ref_anat_dir, "fs_t1_in-func.nii"),
-    #     #     os.path.join(ref_anat_dir, f"vdfs_depths_{method}.nii"),
-    #     #     os.path.join(ref_anat_dir, f"vdfs_columns_{method}.nii"),
-    #     #     method=method,
-    #     #     upsample_factor=None,
-    #     #     n_jobs=8,
-    #     #     force=True,
-    #     # )
-    #     analysis.calc_layers_laynii(
-    #         os.path.join(ref_anat_dir, "rim.nii"),
-    #         method=method,
-    #         force=True,
-    #     )
-    #     os.rename(
-    #         os.path.join(ref_anat_dir, f"rim_metric_{method}.nii"),
-    #         os.path.join(ref_anat_dir, f"ln_depths_{method}.nii"),
-    #     )
-    #     os.remove(os.path.join(ref_anat_dir, f"rim_layers_{method}.nii"))
-    #     os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
+    # 4. calculate LAYNII depths
+    area_files = {
+        ("lh", "white"): os.path.join(fs_dir, "surf", "lh.area"),
+        ("rh", "white"): os.path.join(fs_dir, "surf", "rh.area"),
+        ("lh", "pial"): os.path.join(fs_dir, "surf", "lh.area.pial"),
+        ("rh", "pial"): os.path.join(fs_dir, "surf", "rh.area.pial"),
+    }
+    for method in ["equivol", "equidist"]:
+        print(f"Calculating VDFS and layers using method: {method}...")
+        # vdfs_depths, vdfs_columns = vdfs.process_dc_voxeldepth_from_surfaces(
+        #     os.path.join(ref_anat_dir, "L.white.func.surf.gii"),
+        #     area_files["lh", "white"],
+        #     os.path.join(ref_anat_dir, "L.pial.func.surf.gii"),
+        #     area_files["lh", "pial"],
+        #     os.path.join(ref_anat_dir, "R.white.func.surf.gii"),
+        #     area_files["rh", "white"],
+        #     os.path.join(ref_anat_dir, "R.pial.func.surf.gii"),
+        #     area_files["rh", "pial"],
+        #     os.path.join(ref_anat_dir, "fs_t1_in-func.nii"),
+        #     os.path.join(ref_anat_dir, f"vdfs_depths_{method}.nii"),
+        #     os.path.join(ref_anat_dir, f"vdfs_columns_{method}.nii"),
+        #     method=method,
+        #     upsample_factor=None,
+        #     n_jobs=8,
+        #     force=True,
+        # )
+        analysis.calc_layers_laynii(
+            os.path.join(ref_anat_dir, "rim.nii"),
+            method=method,
+            force=True,
+        )
+        os.rename(
+            os.path.join(ref_anat_dir, f"rim_metric_{method}.nii"),
+            os.path.join(ref_anat_dir, f"ln_depths_{method}.nii"),
+        )
+        os.remove(os.path.join(ref_anat_dir, f"rim_layers_{method}.nii"))
+        os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
 
 
 
@@ -209,5 +209,5 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM011"
+    subject = "sub-LAM022"
     process_ref_anat_subject(studyDir, subject)

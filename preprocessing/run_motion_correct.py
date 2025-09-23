@@ -4,7 +4,7 @@ import subprocess
 
 # studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
 studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
-subject = "sub-LAM009"
+subject = "sub-LAM022"
 
 lib_dir = '/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library'
 out_func = f"{studyDataDir}/derivatives/func/{subject}"
