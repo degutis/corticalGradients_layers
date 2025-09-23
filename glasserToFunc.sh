@@ -3,13 +3,13 @@
 export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/
 
 subject=sub-LAM001
-refAnatDir=/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space
 
 
 # Bring Glasser into subject space
 
+mri_surf2surf --srcsubject fsaverage \
 mri_surf2surf --srcsubject fsaverage \
             --trgsubject ${subject} \
             --hemi lh \

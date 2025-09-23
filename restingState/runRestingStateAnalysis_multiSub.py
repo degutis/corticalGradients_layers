@@ -16,26 +16,44 @@ subtractAverage_true = False
 invert_flag = False
 hcplabels = True
 gradients_flag = True
-plotD = True
+# kernel = "normalized_angle"
+kernel = None
+largeGap = True
 
-# data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM004',
-#              '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Gifti/sub-LAM011']
+if largeGap:
+    data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM004',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM011',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM010',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM012',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM013',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM015',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM016',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM017',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM018',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM019']
+    output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer'
 
-data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM004',
-             '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM011']
-
-# data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM004',
-#              '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/largeGap_Schaefer/sub-LAM011']
+else:
+    data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM004',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM011',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM010',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM012',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM013',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM015',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM016',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM017',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM018',
+                '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/sub-LAM019']
+    output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer'
 
 
 subs = len(data_dirs)
-output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/'
 os.makedirs(output_dir, exist_ok=True)
 
-analysis = "WithinLayer_gradients_noThresh_DistanceMetric_kernelNone"
+analysis = "WithinLayer_gradients_noThresh_DistanceMetric_kernel_None18"
 
 
-if analysis=="WithinLayer_gradients_noThresh_DistanceMetric_kernelNone":
+if analysis=="WithinLayer_gradients_noThresh_DistanceMetric_kernel_None18":
 
     def subtractAverage(adjMatrix):
         avg_matrix = np.nanmean(adjMatrix, axis=2)
@@ -148,50 +166,47 @@ if analysis=="WithinLayer_gradients_noThresh_DistanceMetric_kernelNone":
         laman.plotMatrix(M, os.path.join(output_dir, analysis), "AdjMatrix.svg")
 
         restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")
-        # G = laman.run_gradient_analysis(M, n_components=15, kernel=None, random_state=13011991)
-        G, affinity_matrix = laman.run_gradient_analysis_affinity(M, n_components=15, kernel=None, random_state=13011991)
+        G = laman.run_gradient_analysis(M, n_components=15, kernel=kernel, random_state=13011991)
+        # G, affinity_matrix = laman.run_gradient_analysis_affinity(M, n_components=15, random_state=13011991)
 
         mins = np.nanmin(G, axis=0, keepdims=True)
         maxs = np.nanmax(G, axis=0, keepdims=True)
         rng  = np.where((maxs - mins) == 0, 1, (maxs - mins))
         G_standard = (G - mins) / rng
 
-        laman.plotMatrix(G_standard, os.path.join(output_dir, analysis), "Gradients.svg")        
-        laman.plotMatrix(affinity_matrix, os.path.join(output_dir, analysis), "Affinity_matrix.svg")        
+        laman.plotMatrix(G_standard, os.path.join(output_dir, analysis), "Matrix_Gradients.svg")        
+        # laman.plotMatrix(affinity_matrix, os.path.join(output_dir, analysis), "Matrix_Affinity_matrix.svg")        
 
         # restStateSub.eigvecs_to_nifti(G, analysis, hcp_atlas=hcplabels)
-        D_inter, D_inter_deep, D_inter_mid, D_inter_sup = laman.inter_areal_dissimilarity(G, os.path.join(output_dir, analysis), N=N, zscore_within_layer=True)
-        D_intra, D_Deep, D_Mid, D_Sup = laman.intra_areal_dissimilarity(G, os.path.join(output_dir, analysis), N=N, zscore_within_layer=True)
-        D_intra_pairwise = laman.intra_areal_dissimilarity(G, os.path.join(output_dir, analysis), N=N, zscore_within_layer=True, mode = "pairwise")
+
+        additionalFolder = "dissimilarityGradient"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
+
+        D_inter, D_inter_deep, D_inter_mid, D_inter_sup = laman.inter_areal_dissimilarity(G, os.path.join(output_dir, analysis, additionalFolder), N=N, zscore_within_layer=True)
+        D_intra, D_Deep, D_Mid, D_Sup = laman.intra_areal_dissimilarity(G, os.path.join(output_dir, analysis, additionalFolder), N=N, zscore_within_layer=True)
+        D_intra_pairwise = laman.intra_areal_dissimilarity(G, os.path.join(output_dir, analysis, additionalFolder), N=N, zscore_within_layer=True, mode = "pairwise")
 
         D_inter_standard = (D_inter - np.min(D_inter)) / ((np.max(D_inter) - np.min(D_inter)))
         D_intra_standard = (D_intra_pairwise - np.min(D_intra_pairwise)) / ((np.max(D_intra_pairwise) - np.min(D_intra_pairwise)))
 
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Deep[:,np.newaxis], "D_Deep_15_zscore", analysis)        
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Mid[:,np.newaxis], "D_Mid_15_zscore", analysis)        
-        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Sup[:,np.newaxis], "D_Sup_15_zscore", analysis)        
+        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Deep[:,np.newaxis], "D_Deep_15_zscore", os.path.join(analysis, additionalFolder))        
+        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Mid[:,np.newaxis], "D_Mid_15_zscore", os.path.join(analysis, additionalFolder))        
+        restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Sup[:,np.newaxis], "D_Sup_15_zscore", os.path.join(analysis, additionalFolder))        
 
-        laman.plotFlatMap(D_inter, os.path.join(output_dir, analysis), "D_interFlatMap.png")
-        laman.plotFlatMap(D_intra, os.path.join(output_dir, analysis), "D_intraFlatMap.png")
+        laman.plotFlatMap(D_inter, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap.png")
+        laman.plotFlatMap(D_intra, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraFlatMap.png")
 
-        laman.plotFlatMap(D_inter_deep, os.path.join(output_dir, analysis), "D_interFlatMap_deep.png")
-        laman.plotFlatMap(D_inter_mid, os.path.join(output_dir, analysis), "D_interFlatMap_mid.png")
-        laman.plotFlatMap(D_inter_sup, os.path.join(output_dir, analysis), "D_interFlatMap_sup.png")
+        laman.plotFlatMap(D_inter_deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_deep.png")
+        laman.plotFlatMap(D_inter_mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_mid.png")
+        laman.plotFlatMap(D_inter_sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_sup.png")
 
-        laman.plotFlatMap(D_Deep, os.path.join(output_dir, analysis), "D_intraDeepFlatMap.png")
-        laman.plotFlatMap(D_Mid, os.path.join(output_dir, analysis), "D_intraMidFlatMap.png")
-        laman.plotFlatMap(D_Sup, os.path.join(output_dir, analysis), "D_intraSupFlatMap.png")
+        laman.plotFlatMap(D_Deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraDeepFlatMap.png")
+        laman.plotFlatMap(D_Mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraMidFlatMap.png")
+        laman.plotFlatMap(D_Sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraSupFlatMap.png")
 
         D_Deep = (D_Deep - np.min(D_Deep)) / ((np.max(D_Deep) - np.min(D_Deep)))
         D_Mid = (D_Mid - np.min(D_Mid)) / ((np.max(D_Mid) - np.min(D_Mid)))
         D_Sup = (D_Sup - np.min(D_Sup)) / ((np.max(D_Sup) - np.min(D_Sup)))
-
-        if plotD:
-            restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_inter[:,np.newaxis], "D_inter_15_zscore", analysis)        
-            restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_intra[:,np.newaxis], "D_intra_15_zscore", analysis)        
-
-            restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_intra_pairwise[:,np.newaxis], "D_intra_pairwise_15_zscore", analysis)        
-            restStateSub.plotTwoDimEmbedding(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference")
 
         G_SC = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/BigBrainMatrix/gradients_lamThick_Schaefer.npy")
         G_SC_standard = (G_SC[:,0] - np.min(G_SC[:,0])) / ((np.max(G_SC[:,0]) - np.min(G_SC[:,0])))
@@ -200,80 +215,119 @@ if analysis=="WithinLayer_gradients_noThresh_DistanceMetric_kernelNone":
         G_hubness_00_standard = (G_hubness[:,0] - np.min(G_hubness[:,0])) / ((np.max(G_hubness[:,0]) - np.min(G_hubness[:,0])))
         G_hubness_01_standard = (G_hubness[:,1] - np.min(G_hubness[:,1])) / ((np.max(G_hubness[:,1]) - np.min(G_hubness[:,1])))
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], G_hubness_01_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Hubness 1", y_label ="Hubness 2", fname="Hubness12.svg")
+        G_bigBrain = np.loadtxt(
+            "/home/degutis/repos/ENIGMA/enigmatoolbox/histology/bb_gradient_schaefer_400.csv",
+            delimiter=",",
+        )
+        G_bigBrain_standard = (G_bigBrain - np.min(G_bigBrain)) / ((np.max(G_bigBrain) - np.min(G_bigBrain)))
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Hubness 1", y_label ="Intra-distance", fname="Hubness1Intra1.svg")
+        ## Inter intra
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], D_inter_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Hubness 1", y_label ="Inter-distance", fname="Hubness1Inter1.svg")
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg")
 
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], rDCM_eff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Deep", y_label ="rDCM efferent", fname="rDCM_Deep_Eff.png")
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], rDCM_eff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Mid", y_label ="rDCM efferent", fname="rDCM_Mid_Eff.png")
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], rDCM_eff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Sup", y_label ="rDCM efferent", fname="rDCM_Sup_Eff.png")
+        ## Intra of each layer compared to one another
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: middle", fname="Scatter_DeepMid.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: superficial", fname="Scatter_DeepSup.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference: middle", y_label ="Interparcel laminar difference: superficial", fname="Scatter_MidSup.svg")
 
 
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], rDCM_aff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Deep", y_label ="rDCM afferent", fname="rDCM_Deep_Aff.png")
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], rDCM_aff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Mid", y_label ="rDCM afferent", fname="rDCM_Mid_Aff.png")
-        # restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], rDCM_aff[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-        #                                               x_label="Intraparcel laminar difference: Sup", y_label ="rDCM afferent", fname="rDCM_Sup_Aff.png")
+        additionalFolder = "ENIGMA"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
+
+        from enigmatoolbox.histology import bb_gradient_plot
+        ax_intra = bb_gradient_plot(D_intra, parcellation='schaefer_400')
+        ax_intra.figure.savefig(os.path.join(output_dir, analysis, additionalFolder,"Intra_bb_gradient_plot.png"), dpi=300, bbox_inches="tight")        
+        
+        ax_inter = bb_gradient_plot(D_inter, parcellation='schaefer_400')
+        ax_inter.figure.savefig(os.path.join(output_dir, analysis, additionalFolder, "Inter_bb_gradient_plot.png"), dpi=300, bbox_inches="tight")        
+        
+        from enigmatoolbox.histology import economo_koskinas_spider
+        # Stratify cortical atrophy based on Economo-Koskinas classes
+        class_mean, ax = economo_koskinas_spider(D_intra)
+        ax.figure.savefig(os.path.join(output_dir, analysis, additionalFolder, "Intra_vonEconomo_SpinderPlot.png"), dpi=300, bbox_inches="tight")        
+
+        class_mean, ax2 = economo_koskinas_spider(D_inter)
+        ax2.figure.savefig(os.path.join(output_dir, analysis, additionalFolder, "Inter_vonEconomo_SpinderPlot.png"), dpi=300, bbox_inches="tight")        
+
+        ## Inter intra and ENIGMA BigBrain gradient
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_intra_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_IntraLamThick.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_InterLamThick.svg")
+
+
+
+        additionalFolder = "BigBrain"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
+
+        ## Inter intra and laminar thickness gradient from my G1
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_intra_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_IntraLamThick.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_InterLamThick.svg")
+        
+
+        ## Intra of each layer and laminar thickness gradient from my G1
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Intraparcel laminar difference: deep", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_DeepLamThick.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Intraparcel laminar difference: middle", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_MidLamThick.svg")
+
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_SupLamThick.svg")
+
+
+        additionalFolder = "DCM"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
+
+        ## DCM 
 
         rDCM_grad = rDCM_eff - rDCM_aff
-        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_grad[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_bar.png", layer_names=["Deep","Middle","Sup"])
+        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_grad[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_bar.png", layer_names=["Deep","Middle","Sup"])
 
-        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_eff[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_bar_eff.png", layer_names=["Deep","Middle","Sup"],
+        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_eff[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_bar_eff.png", layer_names=["Deep","Middle","Sup"],
                                                      xlabel="Correlation with efferent effective conn. gradient",)
-        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_aff[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_bar_aff.png", layer_names=["Deep","Middle","Sup"],
+        restStateSub.plot_horizontal_correlation_bar([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], rDCM_aff[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_bar_aff.png", layer_names=["Deep","Middle","Sup"],
                                                      xlabel="Correlation with afferent effective conn. gradient",)
 
 
-        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_grad[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_inter_bar.png", layer_names=["Deep","Middle","Sup"],
+        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_grad[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_inter_bar.png", layer_names=["Deep","Middle","Sup"],
                                                      title="Effective connectivity and interlaminar difference gradients")
 
-        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_eff[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_inter_bar_eff.png", layer_names=["Deep","Middle","Sup"],
+        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_eff[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_inter_bar_eff.png", layer_names=["Deep","Middle","Sup"],
                                                      title="Effective connectivity and interlaminar difference gradients", xlabel="Correlation with efferent effective conn. gradient",)
-        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_aff[:,np.newaxis], os.path.join(output_dir, analysis), "rDCM_inter_bar_aff.png", layer_names=["Deep","Middle","Sup"],
+        restStateSub.plot_horizontal_correlation_bar([D_inter_deep[:,np.newaxis], D_inter_mid[:,np.newaxis], D_inter_sup[:,np.newaxis]], rDCM_aff[:,np.newaxis], os.path.join(output_dir, analysis, additionalFolder), "rDCM_inter_bar_aff.png", layer_names=["Deep","Middle","Sup"],
                                                      title="Effective connectivity and interlaminar difference gradients", xlabel="Correlation with afferent effective conn. gradient",)
 
 
+        additionalFolder = "Hubness"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_intra_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="IntraLamThick.svg")
+        ## Hubness (Renzo measure)
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="InterLamThick.svg")
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], G_hubness_01_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Hubness 1", y_label ="Hubness 2", fname="Hubness12.svg")
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="InterIntra.svg")
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Hubness 1", y_label ="Intra-distance", fname="Hubness1Intra1.svg")
 
+        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([G_hubness_00_standard[:,np.newaxis], D_inter_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
+                                                      x_label="Hubness 1", y_label ="Inter-distance", fname="Hubness1Inter1.svg")
 
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: deep", y_label ="Laminar Thickness G1", fname="DeepLamThick.svg")
-
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: middle", y_label ="Laminar Thickness G1", fname="MidLamThick.svg")
-
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="SupLamThick.svg")
-
-
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: middle", fname="DeepMid.svg")
-
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: deep", y_label ="Interparcel laminar difference: superficial", fname="DeepSup.svg")
-
-        restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=analysis, layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference: middle", y_label ="Interparcel laminar difference: superficial", fname="MidSup.svg")
-
-
-
+       
 
     else:
         eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, convert_to_binary=False, full=True, vMax=1)
@@ -445,7 +499,7 @@ elif analysis=="FullLayer_kernelNone_sparsity01":
 
             restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")
             # G = laman.run_gradient_analysis(M, n_components=15, kernel=None, random_state=13011991)
-            G, affinity_matrix = laman.run_gradient_analysis_affinity(M, n_components=15, kernel=None, sparsity=0.1, random_state=13011991)
+            G, affinity_matrix = laman.run_gradient_analysis_affinity(M, n_components=15, kernel=None, sparsity=0.9, random_state=13011991)
 
             mins = np.nanmin(G, axis=0, keepdims=True)
             maxs = np.nanmax(G, axis=0, keepdims=True)

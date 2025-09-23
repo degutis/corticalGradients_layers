@@ -13,6 +13,12 @@ out_func = f"{studyDataDir}/derivatives/func/{subject}"
 os.makedirs(out_func, exist_ok=True)
 
 
+#lib_dir = '/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library'
+lib_dir = '/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library'
+out_func = f"{studyDataDir}/derivatives/func/{subject}"
+os.makedirs(out_func, exist_ok=True)
+
+
 #script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
 script_dir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library"
 os.environ["PATH"] += os.pathsep + script_dir

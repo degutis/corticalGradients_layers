@@ -7,7 +7,7 @@ from nilearn import plotting
 # Define input and output directories
 # studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
 studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
-subject = "sub-LAM001"
+subject = "sub-LAM010"
 
 # input_dir = f"{studyDataDir}/{subject}/func/derivatives/"
 input_dir = f"{studyDataDir}/derivatives/func/{subject}"

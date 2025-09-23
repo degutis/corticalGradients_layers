@@ -6,7 +6,7 @@ from pathlib import Path
 
 # -------------- config --------------
 studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"
-subject = "sub-LAM001"
+subject = "sub-LAM010"
 outputDir = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 

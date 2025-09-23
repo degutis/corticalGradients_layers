@@ -13,7 +13,12 @@ output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives
 base_dir   = '/home/degutis/repos/SC_laminarThickness'
 n_layers   = 6
 disk_radius_mm = 10.0     # moving-disk radius on inflated surface (uniform average)
-# ----------------------------------------
+
+# NEW: choose how to partial out nuisance effects in the correlation step.
+#   'global'       -> regress out the global mean 6-layer profile (current behavior)
+#   'parcel_total' -> regress out each parcel's overall thickness (sum across layers) across parcels
+partial_mode = 'parcel_total'   # or 'parcel_total'
+# ---------------------------------------- 
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -91,33 +96,93 @@ vL = load_layers_by_vertex('L', n_layers=n_layers)
 vR = load_layers_by_vertex('R', n_layers=n_layers)
 
 # 2) Smooth *absolute* layer maps on the inflated surface with a 10 mm moving disk (uniform)
-# svL = smooth_layers_on_inflated('L', vL, disk_radius_mm)
-# svR = smooth_layers_on_inflated('R', vR, disk_radius_mm)
+svL = smooth_layers_on_inflated('L', vL, disk_radius_mm)
+svR = smooth_layers_on_inflated('R', vR, disk_radius_mm)
 # (This is the “curvature correction” step in the paper.)  # see citations below
 
 # 3) Normalize to *relative* thickness per vertex (after smoothing)
-# rvL = to_relative_per_vertex(svL)
-# rvR = to_relative_per_vertex(svR)
+rvL = to_relative_per_vertex(svL)
+rvR = to_relative_per_vertex(svR)
 
 rvL = to_relative_per_vertex(vL)
 rvR = to_relative_per_vertex(vR)
 
 
-# 4) Parcel to MMP-360 (keep all parcels as requested)
+# 4) Parcel to atlas (keep all parcels as requested)
 means_L = parcel_means_from_vertices('L', rvL)
 means_R = parcel_means_from_vertices('R', rvR)
-rel_thickness_matrix = np.vstack([means_L, means_R])  # (360, 6)
+rel_thickness_matrix = np.vstack([means_L, means_R])
 
-# 5) Partial corr between parcels controlling for the average layer profile
-g = rel_thickness_matrix.mean(axis=0)                # (6,)
-G = np.column_stack([g, np.ones_like(g)])            # (6,2)
-GtG_inv = np.linalg.inv(G.T @ G)
-H = G @ GtG_inv @ G.T
-I = np.eye(6)
+# ---------- pipeline (per the paper’s LTC) ----------
+# 1) Load absolute laminar thickness per vertex
+vL = load_layers_by_vertex('L', n_layers=n_layers)
+vR = load_layers_by_vertex('R', n_layers=n_layers)
 
-Y = rel_thickness_matrix.T                           # (6,360)
-Y_res = (I - H) @ Y
-residuals = Y_res.T                                  # (360,6)
+# 2) Optional smoothing of ABSOLUTE layer maps on inflated surface
+# svL = smooth_layers_on_inflated('L', vL, disk_radius_mm)
+# svR = smooth_layers_on_inflated('R', vR, disk_radius_mm)
+
+# 3) Normalize to RELATIVE per vertex (after smoothing, if enabled)
+rvL = to_relative_per_vertex(vL)   # or to_relative_per_vertex(svL)
+rvR = to_relative_per_vertex(vR)   # or to_relative_per_vertex(svR)
+
+# 4) Parcel-average (keep all parcels)
+means_L = parcel_means_from_vertices('L', rvL)   # (P_L, 6)
+means_R = parcel_means_from_vertices('R', rvR)   # (P_R, 6)
+rel_thickness_matrix = np.vstack([means_L, means_R])  # X: (P, 6)
+
+P = rel_thickness_matrix.shape[0]
+I_P = np.eye(P)
+I_6 = np.eye(6)
+
+# 5) Partial out nuisance, depending on `partial_mode`
+if partial_mode == 'global':
+    # --- CURRENT BEHAVIOR ---
+    # Regress out the global mean 6-layer profile (and intercept) across the LAYER dimension
+    g = rel_thickness_matrix.mean(axis=0)           # (6,)
+    G = np.column_stack([g, np.ones_like(g)])       # (6,2)
+    H_layers = G @ np.linalg.pinv(G.T @ G) @ G.T    # projector in layer-space
+    Y = rel_thickness_matrix.T                      # (6, P)
+    Y_res = (I_6 - H_layers) @ Y                    # residualize across layers
+    residuals = Y_res.T                              # (P, 6)
+
+elif partial_mode == 'parcel_total':
+    # --- NEW OPTION ---
+    # Regress out each parcel's overall thickness (sum across layers) across the PARCEL dimension.
+    # Use *absolute* parcel means to compute the per-parcel total.
+    abs_means_L = parcel_means_from_vertices('L', vL)  # (P_L, 6) ABSOLUTE
+    abs_means_R = parcel_means_from_vertices('R', vR)  # (P_R, 6) ABSOLUTE
+    abs_means = np.vstack([abs_means_L, abs_means_R])  # (P, 6)
+    parcel_total = abs_means.sum(axis=1)               # (P,)
+
+    # Design matrix over parcels: [parcel_total, intercept]
+    C = np.column_stack([parcel_total, np.ones_like(parcel_total)])  # (P, 2)
+    H_parcels = C @ np.linalg.pinv(C.T @ C) @ C.T                    # projector in parcel-space
+
+    # Residualize the RELATIVE layer matrix across parcels (column-wise)
+    # For each layer (column), remove variance explained by parcel_total (and intercept)
+    residuals = (I_P - H_parcels) @ rel_thickness_matrix            # (P, 6)
+
+elif partial_mode == 'global_and_parcel':
+    # --- NEW: do BOTH ---
+    # 1) Remove global mean layer profile (across LAYERS)
+    g = rel_thickness_matrix.mean(axis=0)                  # (6,)
+    G = np.column_stack([g, np.ones_like(g)])              # (6,2)
+    H_layers = G @ np.linalg.pinv(G.T @ G) @ G.T           # (6,6)
+    M1 = rel_thickness_matrix @ (I_6 - H_layers)           # (P,6)
+
+    # 2) Remove parcel-wise overall absolute thickness (across PARCELS)
+    abs_means_L = parcel_means_from_vertices('L', vL)      # (P_L,6) ABSOLUTE
+    abs_means_R = parcel_means_from_vertices('R', vR)      # (P_R,6) ABSOLUTE
+    abs_means = np.vstack([abs_means_L, abs_means_R])      # (P,6)
+    parcel_total = abs_means.sum(axis=1)                   # (P,)
+    C = np.column_stack([parcel_total, np.ones_like(parcel_total)])  # (P,2)
+    H_parcels = C @ np.linalg.pinv(C.T @ C) @ C.T          # (P,P)
+
+    residuals = (I_P - H_parcels) @ M1                     # (P,6)
+
+else:
+    raise ValueError("partial_mode must be 'global', 'parcel_total', or 'global_and_parcel'")
 
 # 6) Pearson corr across parcels on residuals; remove diagonal BEFORE z
 r = np.corrcoef(residuals, rowvar=True)
@@ -126,8 +191,8 @@ np.fill_diagonal(r, np.nan)
 # 7) Fisher z
 r = np.clip(r, -0.999999, 0.999999)
 adjacency = np.arctanh(r)
-
 np.fill_diagonal(adjacency, 0)
+
 
 # 8) Save + plot
 np.save(os.path.join(output_dir, 'adjacency_matrix_Schaefer.npy'), adjacency)
@@ -148,7 +213,7 @@ print(M.shape)
 
 n_components = 5
 # G = laman.run_gradient_analysis(M, n_components=n_components, random_state=13011992)
-G, A = laman.run_gradient_analysis_affinity(M, n_components=n_components, approach="PCA", kernel=None, random_state=13011992)
+G, A = laman.run_gradient_analysis_affinity(M, n_components=n_components, approach="dm", kernel=None, random_state=13011992)
 np.save(os.path.join(output_dir, 'gradients_lamThick_Schaefer.npy'), G)
 
 for i in range(n_components):

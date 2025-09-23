@@ -8,7 +8,7 @@ from pathlib import Path
 
 # studyDataDir = "/Users/karolis/Desktop/highRes_Resting"  # Set your study data directory
 studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
-subject = "sub-LAM009"
+subject = "sub-LAM010"
 outputDir = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/GIFs/{subject}"
 Path(outputDir).mkdir(parents=True, exist_ok=True)
 
@@ -17,12 +17,12 @@ nii1 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/fs_t1_in-func.ni
 # nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/mrs_Glu-in_t1_appliedTrans.nii").get_fdata()
 
 
-# nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/ln_depths_equivol.nii").get_fdata()
+nii2 = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/ln_depths_equivol.nii").get_fdata()
 # nii2 = nib.load(f"{studyDataDir}/derivatives/func/{subject}/{subject}_MEAN.nii").get_fdata()
-nii2_r = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_L_in-func.nii").get_fdata()
-nii2_l = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_R_in-func.nii").get_fdata()
+# nii2_r = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_L_in-func.nii").get_fdata()
+# nii2_l = nib.load(f"{studyDataDir}/derivatives/ref_anat/{subject}/glasser_R_in-func.nii").get_fdata()
 
-nii2 = nii2_r + nii2_l
+# nii2 = nii2_r + nii2_l
 
 # Ensure both images have the same shape
 if nii1.shape != nii2.shape:
@@ -50,15 +50,15 @@ rand_colors[0] = [0, 0, 0]  # Force zero values to be black
 cmap = mcolors.ListedColormap(rand_colors)
 
 
-# cmap = plt.get_cmap("jet")  # Choose colormap
-# nii2_colored = cmap(nii2_slice)[:, :, :3]  # Drop alpha channel
-# nii2_colored = (nii2_colored * 255).astype(np.uint8)  # Convert to 8-bit
-
-# Apply the random colormap to the second image
+cmap = plt.get_cmap("jet")  # Choose colormap
 nii2_colored = cmap(nii2_slice)[:, :, :3]  # Drop alpha channel
 nii2_colored = (nii2_colored * 255).astype(np.uint8)  # Convert to 8-bit
 
-# Ensure nii2_colored has the same size as nii1_rgb
+# Apply the random colormap to the second image
+# nii2_colored = cmap(nii2_slice)[:, :, :3]  # Drop alpha channel
+# nii2_colored = (nii2_colored * 255).astype(np.uint8)  # Convert to 8-bit
+
+# # Ensure nii2_colored has the same size as nii1_rgb
 nii2_colored_resized = resize(nii2_colored, nii1_rgb.shape, anti_aliasing=True)
 nii2_colored_resized = (nii2_colored_resized * 255).astype(np.uint8)
 nii2_colored_resized[nii2_slice == 0] = [0, 0, 0]  # Set zero pixels to black
@@ -68,6 +68,6 @@ frames = [nii1_rgb, nii2_colored_resized] * 100  # Flashing effect
 # frames = [nii1_rgb, nii2_rgb] * 100  # Flashing effect
 
 # Save as GIF
-imageio.mimsave(f"{outputDir}/T1_atlas_contrast.gif", frames, duration=500)  # Adjust duration as needed
-# imageio.mimsave(f"{outputDir}/T1_layers_contrast.gif", frames, duration=500)  # Adjust duration as needed
+# imageio.mimsave(f"{outputDir}/T1_atlas_contrast.gif", frames, duration=500)  # Adjust duration as needed
+imageio.mimsave(f"{outputDir}/T1_layers_contrast.gif", frames, duration=500)  # Adjust duration as needed
 # imageio.mimsave(f"{outputDir}/T1_T2_contrast.gif", frames, duration=500)  # Adjust duration as needed

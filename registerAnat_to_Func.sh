@@ -5,6 +5,8 @@ set -euo pipefail
 subject=sub-LAM001
 # fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/${subject}/
 fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/${subject}/
+# fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/${subject}/
+fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/${subject}/
 bold_file=${subject}_MEAN.nii
 bold_file_withoutExt=${subject}_MEAN
 #func_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/${subject}

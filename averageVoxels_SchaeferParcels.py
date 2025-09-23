@@ -3,9 +3,6 @@ import numpy as np
 import os
 from scipy.stats import zscore
 
-import laminarRestingState as lrs
-import laminarAnalyses as laman
-
 
 def averageVoxels_parcels_with_fs(
     subject,
@@ -122,11 +119,21 @@ def averageVoxels_parcels_with_fs(
     print("All done")
 
 
-averageVoxels_parcels_with_fs("sub-LAM001","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM002","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM003","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM004","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM005","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM006","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM009","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM011","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM001","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM002","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM003","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM004","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM005","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM006","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM009","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM011","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM010","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM012","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM013","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM015","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM016","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM017","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM018","run1","largeGap_Schaefer")
+# averageVoxels_parcels_with_fs("sub-LAM019","run1","largeGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM021","run1","smallGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM022","run1","smallGap_Schaefer")
