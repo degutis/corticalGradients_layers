@@ -2,8 +2,8 @@
 
 export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/
 
-subject=sub-LAM006
-refAnatDir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/${subject}
+subject=sub-LAM001
+refAnatDir=/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space
 

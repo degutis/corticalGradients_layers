@@ -3,15 +3,18 @@ import sys
 import subprocess
 
 # studyDataDir = "/media/miplab-nas2/Data/Karolis/high_res_resting/"  # Set your study data directory
-studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
-subject = "sub-LAM006"
+#studyDataDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/"  # Set your study data directory
+studyDataDir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS"
+subject = "sub-LAM002"
 
-lib_dir = '/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library'
+#lib_dir = '/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library'
+lib_dir = '/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library'
 out_func = f"{studyDataDir}/derivatives/func/{subject}"
 os.makedirs(out_func, exist_ok=True)
 
 
-script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+#script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+script_dir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library"
 os.environ["PATH"] += os.pathsep + script_dir
 sys.path.append(script_dir)
 
@@ -32,7 +35,7 @@ func_dir = f"{studyDataDir}/{subject}/func/"
 print("Running motion correction")
 subprocess.run([
     "bash", "../fmri-analysis/library/motioncorrect.sh",
-    f"{func_dir}/{subject}_task-rest_bold.nii.gz",
+    f"{func_dir}/{subject}_task-HVNT_bold.nii.gz",
     lib_dir,
     out_func
 ], check=True)

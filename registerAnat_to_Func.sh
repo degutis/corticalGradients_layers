@@ -1,13 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
-subject=sub-LAM005
+subject=sub-LAM001
 # fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/${subject}/
 fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/${subject}/
 bold_file=${subject}_MEAN.nii
 bold_file_withoutExt=${subject}_MEAN
-func_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/${subject}
-ref_anat_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/${subject}
+#func_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/${subject}
+func_dir=/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/func/${subject}
+#ref_anat_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/${subject}
+ref_anat_dir=/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/ref_anat/${subject}
+
 
 cd ${func_dir}
 

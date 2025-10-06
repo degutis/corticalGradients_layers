@@ -4,8 +4,10 @@ import os
 import sys
 
 # os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/high_res_resting//derivatives/freesurfer/"
-os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting//derivatives/freesurfer/"
-script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+#os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/"
+os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/derivatives/freesurfer/"
+#script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+script_dir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/01_Code/dFC_layers/HVNT_preprocessing_branch/fmri-analysis/library"
 os.environ["PATH"] += os.pathsep + script_dir
 sys.path.append(script_dir)
 
@@ -115,6 +117,6 @@ def process_ref_anat_subject(studyDataDir, subject):
         os.remove(os.path.join(ref_anat_dir, f"rim_midGM_{method}.nii"))
 
 if __name__ == "__main__":
-    studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM005"
+    studyDir = "/media/miplab-nas2/Data/Jenifer/7Tlaminar/02_Data/BIDS/"
+    subject = "sub-LAM001"
     process_ref_anat_subject(studyDir, subject)
