@@ -1,9 +1,11 @@
 #!/bin/bash
 
 export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/
+# export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/
 
-subject=sub-LAM022
+subject=sub-LAM007
 refAnatDir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/${subject}
+# refAnatDir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/${subject}
 
 # Bring Glasser into subject space
 
@@ -29,16 +31,3 @@ antsApplyTransforms --interpolation BSpline[5] \
                     -t ${refAnatDir}/fs_to_func_0GenericAffine.mat \
                     -o ${refAnatDir}/HCP-MMP1_in-func.nii \
                     -n NearestNeighbor
-
-### Maybe this is not necessary:
-
-#fslmaths -dt int \
-#        ${SUBJECTS_DIR}/${subject}/mri/HCP-MMP1.nii.gz \
-#        -thr 999 \
-#        -mul 1 \
-#        ${SUBJECTS_DIR}/${subject}/mri/HCP-MMP1_GM.nii.gz
-
-#flirt -in ${SUBJECTS_DIR}/${subject}/mri/HCP-MMP1_GM.nii.gz \
-#    -ref ${refAnatDir}/${subject}_bold_SMSEPI_mc_MEAN_n4_brain.nii \
-#    -out ${refAnatDir}/Glasser_in_anat.nii \
-#    -applyxfm -interp nearestneighbour -usesqform

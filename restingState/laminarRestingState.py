@@ -450,7 +450,7 @@ class LaminarRestingState:
                             network_labels=None,
                             x_label="Emb1",
                             y_label="Emb2",
-                            network_cmap='tab10',
+                            network_cmap='tab20',
                             # NEW:
                             atlas='schaefer',  # 'schaefer' (7-net) or 'custom'
                             schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
@@ -636,7 +636,7 @@ class LaminarRestingState:
                                         x_label="Emb1",
                                         y_label="Emb2",
                                         fname=None,
-                                        network_cmap="tab10",
+                                        network_cmap="tab20",
                                         dot_size=12,
                                         # NEW:
                                         atlas='schaefer',               # 'schaefer' (7-net) or 'custom'
@@ -739,9 +739,27 @@ class LaminarRestingState:
             shapes = ['o']
             if layer_labels is None: layer_labels = ["AcrossLayers"]
 
+
+
         # ---------------- colours ----------------
-        cmap = plt.get_cmap(network_cmap, len(network_labels))
-        net_colours = [cmap(i) for i in range(len(network_labels))]
+        # Build a light→dark palette in the order:
+        # Somatomotor, Visual, Ventral/Salience, Dorsal Attn, Default, Control, Limbic
+        # (_schaefer7_from_name gives indices: 0=Visual,1=Somatomotor,2=DorsAttn,3=Ventral/Sal,
+        #  4=Limbic, 5=Control, 6=Default)
+
+        # You can change 'Blues' to any sequential cmap you like: 'Greys', 'Purples', 'cividis', etc.
+        seq_cmap = plt.get_cmap('tab20')
+
+        # sample 7 evenly spaced shades (avoid extremes for visibility)
+        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
+
+        # desired light→dark order mapped to those indices
+        order_idx = [1, 0, 3, 2, 6, 5, 4]   # Somato, Visual, Vent/Sal, DorsAttn, Default, Control, Limbic
+
+        # fill the color for each network index (0..6) so legend & plotting stay in-sync
+        net_colours = [None] * 7
+        for rank, net_idx in enumerate(order_idx):
+            net_colours[net_idx] = shades[rank]
 
         # ---------------- scatter ----------------
         fig, ax = plt.subplots(figsize=(7, 7))
@@ -771,6 +789,10 @@ class LaminarRestingState:
         ax.set_title("Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
         ax.set_aspect('equal', adjustable='box')
 
+        # >>> FIXED AXES IN [0, 1] <<<
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+
         # ---------------- legends ----------------
         net_handles = [Line2D([0],[0], marker='o', color='w',
                             markerfacecolor=net_colours[i], markeredgecolor='k',
@@ -796,44 +818,1187 @@ class LaminarRestingState:
         print("Saved:", os.path.join(outdir, fname))
 
 
-    def plot_horizontal_correlation_bar(self, layers, gradient, outdir, fname, layer_names=None, title="Effective connectivity and intralaminar difference gradients",
-                                        xlabel="Correlation with efferent-afferent effective conn. gradient", xlim=(-1.0, 1.0), save_path=None):
-
+    def plotScatter3DWithPlane(self,
+                            X,
+                            Y=None,
+                            Z=None,
+                            name="Scatter3D",
+                            dims_to_plot=(0, 1, 2),
+                            layer_labels=None,
+                            network_labels=None,
+                            x_label="Emb1",
+                            y_label="Emb2",
+                            z_label="Emb3",
+                            fname=None,
+                            network_cmap="tab20",
+                            dot_size=30,
+                            show_plane=False,
+                            # NEW: de-squish controls
+                            equalize_axes=True,     # put data in a cube so scales match
+                            cube_pad=0.06,          # 6% padding around the cube
+                            proj_type="ortho",      # 'ortho' to remove perspective, 'persp' for default
+                            plane_alpha=0.18,
+                            # Atlas options
+                            atlas='schaefer',
+                            schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"
+                            ):
+        import os
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
         from scipy.stats import pearsonr
+        import nibabel as nib
 
-        layers = [np.asarray(l).ravel() for l in layers]
-        gradient = np.asarray(gradient).ravel()
+        # ---------- helpers ----------
+        def _load_label_gii(path):
+            g = nib.load(path)
+            labs = np.asarray(g.agg_data(), dtype=int).squeeze()
+            lt = g.labeltable
+            key_to_name = {lab.key: lab.label for lab in lt.labels}
+            return labs, key_to_name
 
-        if any(len(l) != len(gradient) for l in layers):
-            raise ValueError("All layer vectors must have the same length as the gradient.")
+        def _schaefer7_from_name(name: str) -> int:
+            # 0=Visual, 1=Somatomotor, 2=DorsAttn, 3=Ventral/Sal, 4=Limbic, 5=Control, 6=Default
+            n = name.lower()
+            if 'vis' in n: return 0
+            if 'som' in n or 'sommot' in n: return 1
+            if 'dorsattn' in n or ('dors' in n and 'attn' in n): return 2
+            if 'ventattn' in n or 'salventattn' in n or ('vent' in n and 'attn' in n) or 'sal' in n: return 3
+            if 'limbic' in n: return 4
+            if 'cont' in n or 'control' in n or 'frontoparietal' in n or 'fp' in n: return 5
+            if 'default' in n: return 6
+            raise ValueError(f"Unrecognized Schaefer-7 network in label name: {name}")
 
-        n = len(layers)
-        if layer_names is None:
-            layer_names = [f"Layer {i+1}" for i in range(n)]
+        # ---------- networks / N ----------
+        if atlas.lower() == 'schaefer':
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("For atlas='schaefer', provide schaefer_label_L and schaefer_label_R.")
+            L_lab, L_map = _load_label_gii(schaefer_label_L)
+            R_lab, R_map = _load_label_gii(schaefer_label_R)
+            uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+            uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+            nets0 = []
+            for k in uL: nets0.append(_schaefer7_from_name(L_map[k]))
+            for k in uR: nets0.append(_schaefer7_from_name(R_map[k]))
+            networks0 = np.asarray(nets0, int)
+            N = networks0.size
+            if network_labels is None:
+                network_labels = ['Visual','Somatomotor','Dorsal Attn',
+                                'Ventral/Salience','Limbic','Control','Default']
+        else:
+            cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
+            networks0 = cats0 - 1
+            N = networks0.size
+            if network_labels is None:
+                network_labels = [
+                    "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                    "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                    "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+                ]
 
-        # Compute correlations and p-values
-        corrs, pvals = [], []
-        for l in layers:
-            r, p = pearsonr(gradient, l)
-            corrs.append(r)
-            pvals.append(p)
+        # ---------- get x,y,z ----------
+        if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
+            nrows, ndims = X.shape
+            i, j, k = dims_to_plot
+            if i >= ndims or j >= ndims or k >= ndims:  # accept 1-based
+                i, j, k = i-1, j-1, k-1
+            if nrows in (N, 3*N):
+                mode = "multilayer" if nrows == 3*N else "single"
+            elif nrows % 3 == 0 and (nrows // 3) == N:
+                mode = "multilayer"
+            else:
+                raise ValueError(f"Data has {nrows} rows, but atlas implies N={N} (expected {N} or {3*N}).")
+            x, y, z = X[:, i].astype(float), X[:, j].astype(float), X[:, k].astype(float)
+        else:
+            if Y is None or Z is None:
+                raise ValueError("Provide either a 2D matrix X with dims_to_plot, or explicit vectors X, Y, Z.")
+            x = np.asarray(X, float).squeeze()
+            y = np.asarray(Y, float).squeeze()
+            z = np.asarray(Z, float).squeeze()
+            nrows = x.size
+            if nrows in (N, 3*N):
+                mode = "multilayer" if nrows == 3*N else "single"
+            elif nrows % 3 == 0 and (nrows // 3) == N:
+                mode = "multilayer"
+            else:
+                raise ValueError(f"Vector length {nrows} not compatible with N={N} or 3N={3*N}.")
 
-        print(corrs)
-        print(pvals)
+        # ---------- expand networks to multilayer ----------
+        if mode == "multilayer":
+            nets = np.tile(networks0, 3)
+            layers = np.repeat([0, 1, 2], N)
+            shapes = ['o', 's', '^']
+            if layer_labels is None: layer_labels = ["Deep", "Middle", "Superficial"]
+        else:
+            nets = networks0
+            layers = np.zeros(N, int)
+            shapes = ['o']
+            if layer_labels is None: layer_labels = ["AcrossLayers"]
 
-        fig, ax = plt.subplots(figsize=(7, 3.2))
-        y = np.arange(n)
-        ax.barh(y, corrs)        # horizontal bars
-        ax.set_yticks(y, labels=layer_names)
-        ax.set_xlim(*xlim)
-        ax.axvline(0)            # reference line at zero
-        ax.set_xlabel(xlabel)
-        ax.set_title(title)
-        ax.invert_yaxis()        # Layer 1 at top
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
+        # ---------- colors ----------
+        # We want discrete shades going light→dark in the order:
+        # Somato (1), Visual (0), Vent/Sal (3), DorsAttn (2), Default (6), Control (5), Limbic (4)
+        if len(network_labels) == 7:
+            # Try to use a sequential cmap (e.g., 'Blues', 'Greys', 'Purples', 'cividis').
+            # If a qualitative cmap like 'tab10' is passed, we still sample it—but it won't be a light→dark ramp.
+            try:
+                seq_cmap = plt.get_cmap(network_cmap)
+            except Exception:
+                seq_cmap = plt.get_cmap('tab20')
+
+            # 7 evenly spaced shades (avoid extremes for visibility)
+            shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
+
+            order_idx = [1, 0, 3, 2, 6, 5, 4]  # target order
+            net_colours = [None] * 7
+            for rank, net_idx in enumerate(order_idx):
+                net_colours[net_idx] = shades[rank]
+        else:
+            # Fallback for non-7-network sets: categorical palette
+            cmap = plt.get_cmap(network_cmap, len(network_labels))
+            net_colours = [cmap(i) for i in range(len(network_labels))]
+
+        # ---------- figure / axes ----------
+        fig = plt.figure(figsize=(8.8, 8.0))
+        ax = fig.add_subplot(111, projection='3d')
+        # projection choice (helps perceived “squish”)
+        try:
+            ax.set_proj_type(proj_type)
+        except Exception:
+            pass  # older mpl
+
+        # ---------- scatter ----------
+        for lyr in np.unique(layers):
+            for net in np.unique(nets):
+                m = (layers == lyr) & (nets == net)
+                if not np.any(m): continue
+                ax.scatter(x[m], y[m], z[m],
+                        s=dot_size,
+                        marker=shapes[int(lyr if mode == "multilayer" else 0)],
+                        facecolor=net_colours[int(net)],
+                        edgecolor='k', linewidths=0.25, alpha=0.9)
+
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_zlabel(z_label)
+        ax.set_title("3D Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
+
+        # ---------- compute cube limits from DATA (not current axis) ----------
+        def _safe_range(lo, hi):
+            if not np.isfinite(lo) or not np.isfinite(hi): return -1.0, 1.0
+            if hi == lo: return lo - 0.5, hi + 0.5
+            return lo, hi
+
+        xlo, xhi = _safe_range(np.nanmin(x), np.nanmax(x))
+        ylo, yhi = _safe_range(np.nanmin(y), np.nanmax(y))
+        zlo, zhi = _safe_range(np.nanmin(z), np.nanmax(z))
+
+        if equalize_axes:
+            xm, ym, zm = (xlo + xhi)/2.0, (ylo + yhi)/2.0, (zlo + zhi)/2.0
+            r = max(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
+            r *= (1.0 + float(cube_pad))
+            xl, yl, zl = xm - r, ym - r, zm - r
+            xh, yh, zh = xm + r, ym + r, zm + r
+        else:
+            xl, xh = xlo, xhi
+            yl, yh = ylo, yhi
+            zl, zh = zlo, zhi
+
+        # ---------- best-fit plane ----------
+        # compute before setting limits; draw over the *cube* so coverage is complete
+        r_xy, p_xy = pearsonr(x, y)
+        r_xz, p_xz = pearsonr(x, z)
+        r_yz, p_yz = pearsonr(y, z)
+        r2 = np.nan
+
+        if show_plane:
+            Xmat = np.column_stack([x, y, np.ones_like(x)])
+            a, b, c = np.linalg.lstsq(Xmat, z, rcond=None)[0]
+            z_hat = a * x + b * y + c
+            ss_res = np.sum((z - z_hat) ** 2)
+            ss_tot = np.sum((z - np.mean(z)) ** 2)
+            r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+
+            xx = np.linspace(xl, xh, 45)
+            yy = np.linspace(yl, yh, 45)
+            XX, YY = np.meshgrid(xx, yy)
+            ZZ = a * XX + b * YY + c
+            ax.plot_surface(XX, YY, ZZ, alpha=plane_alpha, linewidth=0, antialiased=True)
+
+        # ---------- apply cube limits & equal box aspect ----------
+        ax.set_xlim(xl, xh)
+        ax.set_ylim(yl, yh)
+        ax.set_zlim(zl, zh)
+        if equalize_axes:
+            # equal scale in display space
+            try:
+                ax.set_box_aspect((1, 1, 1))
+            except Exception:
+                pass  # older mpl fallback: at least limits are equalized
+
+        # a gentle default view
+        ax.view_init(elev=22, azim=38)
+
+        # ---------- stats textbox ----------
+        stats_txt = (f"r_xy={r_xy:.3f} (p={p_xy:.2g})\n"
+                    f"r_xz={r_xz:.3f} (p={p_xz:.2g})\n"
+                    f"r_yz={r_yz:.3f} (p={p_yz:.2g})")
+        if show_plane and np.isfinite(r2):
+            stats_txt += f"\nPlane $R^2$={r2:.3f}"
+        bbox_props = dict(boxstyle="round,pad=0.25", fc="w", ec="k", lw=0.4)
+        ax.text2D(0.02, 0.98, stats_txt, transform=ax.transAxes, ha="left", va="top",
+                fontsize=7, bbox=bbox_props)
+
+        # ---------- legends ----------
+        if len(network_labels) == 7:
+            # Show only present networks, but in the desired light→dark order
+            present = set(int(i) for i in np.unique(nets))
+            legend_order = [i for i in [1, 0, 3, 2, 6, 5, 4] if i in present]
+        else:
+            legend_order = list(int(i) for i in np.unique(nets))
+
+        net_handles = [Line2D([0],[0], marker='o', color='w',
+                            markerfacecolor=net_colours[i], markeredgecolor='k',
+                            markersize=8, label=network_labels[i])
+                    for i in legend_order]
+        leg1 = ax.legend(handles=net_handles, title="RSN",
+                        bbox_to_anchor=(1.32, 1), loc='upper left')
+        ax.add_artist(leg1)
+
+        if mode == "multilayer":
+            lyr_handles = [Line2D([0],[0], marker=shapes[i], color='w',
+                                markeredgecolor='k', markersize=8, label=layer_labels[i])
+                        for i in np.unique(layers)]
+            ax.legend(handles=lyr_handles, title="Layer", loc='upper right')
+
+        # ---------- save ----------
+        outdir = os.path.join(self.data_dir, name)
+        os.makedirs(outdir, exist_ok=True)
+        if fname is None:
+            if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
+                i, j, k = dims_to_plot
+                fname = f"Scatter3D_d{i+1}{j+1}{k+1}_{'multi' if mode=='multilayer' else 'single'}.png"
+            else:
+                fname = f"Scatter3D_{'multi' if mode=='multilayer' else 'single'}.png"
+
         fig.tight_layout()
         fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
+        plt.close(fig)
+        print("Saved:", os.path.join(outdir, fname))
+
+
+    def plotScatterCentroids(self,
+                            eigvecs,
+                            name,
+                            eigvecs_to_plot=(0, 1),
+                            layer_labels=None,
+                            network_labels=None,
+                            x_label="Emb1",
+                            y_label="Emb2",
+                            fname=None,
+                            network_cmap="tab20",
+                            dot_size=60,
+                            annotate=False,
+                            # atlas options
+                            atlas='schaefer',  # 'schaefer' (7-net) or 'custom'
+                            schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"
+                            ):
+        """
+        Plot 2D centroids of RSNs (and layers if present) for the selected embedding dims.
+        Axes are fixed to [0, 1] on both x and y.
+        """
+        import os, numpy as np, matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
+        import nibabel as nib
+
+        # ---------------- helpers ----------------
+        def _load_label_gii(path):
+            g = nib.load(path)
+            labs = np.asarray(g.agg_data(), dtype=int).squeeze()
+            lt = g.labeltable
+            key_to_name = {lab.key: lab.label for lab in lt.labels}
+            return labs, key_to_name
+
+        def _schaefer7_from_name(name: str) -> int:
+            n = name.lower()
+            if 'vis' in n: return 0
+            if 'som' in n or 'sommot' in n: return 1
+            if 'dorsattn' in n or ('dors' in n and 'attn' in n): return 2
+            if 'ventattn' in n or 'salventattn' in n or ('vent' in n and 'attn' in n) or 'sal' in n: return 3
+            if 'limbic' in n: return 4
+            if 'cont' in n or 'control' in n or 'frontoparietal' in n or 'fp' in n: return 5
+            if 'default' in n: return 6
+            raise ValueError(f"Unrecognized Schaefer-7 network in label name: {name}")
+
+        # ---------------- per-parcel RSN vector ----------------
+        if atlas.lower() == 'schaefer':
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("For atlas='schaefer', provide schaefer_label_L and schaefer_label_R (.label.gii on fs_LR 32k).")
+            L_lab, L_map = _load_label_gii(schaefer_label_L)
+            R_lab, R_map = _load_label_gii(schaefer_label_R)
+            uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+            uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+
+            networks0 = []
+            for k in uL: networks0.append(_schaefer7_from_name(L_map[k]))
+            for k in uR: networks0.append(_schaefer7_from_name(R_map[k]))
+            networks0 = np.asarray(networks0, dtype=int)
+            N = networks0.size
+
+            if network_labels is None:
+                network_labels = ['Visual', 'Somatomotor', 'Dorsal Attn',
+                                'Ventral/Salience', 'Limbic', 'Control', 'Default']
+        else:
+            cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)  # values 1..K
+            networks0 = cats0 - 1
+            N = networks0.size
+            if network_labels is None:
+                network_labels = [
+                    "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                    "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                    "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+                ]
+
+        # ---------------- infer rows / mode ----------------
+        nrows, ndims = eigvecs.shape
+        if nrows == 3 * N:
+            mode = "multilayer"
+        elif nrows == N:
+            mode = "single"
+        else:
+            if nrows % 3 == 0 and (nrows // 3) == N:
+                mode = "multilayer"
+            else:
+                raise ValueError(f"eigvecs has {nrows} rows, but atlas implies N={N} parcels (expected {N} or {3*N}).")
+
+        # ---------------- parse dims (accept 1-based) ----------------
+        x_dim, y_dim = eigvecs_to_plot
+        if x_dim >= ndims or y_dim >= ndims:
+            x_dim, y_dim = x_dim - 1, y_dim - 1
+        if not (0 <= x_dim < ndims and 0 <= y_dim < ndims):
+            raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}]")
+
+        # ---------------- expand RSNs / layers ----------------
+        if mode == "multilayer":
+            nets   = np.tile(networks0, 3)           # (3N,)
+            layers = np.repeat([0, 1, 2], N)         # Deep/Middle/Superficial
+            shapes = ['o', 's', '^']
+            if layer_labels is None: layer_labels = ["Deep", "Middle", "Superficial"]
+        else:
+            nets   = networks0
+            layers = np.zeros(N, dtype=int)
+            shapes = ['o']
+            if layer_labels is None: layer_labels = ["AcrossLayers"]
+
+        # ---------------- colours ----------------
+        # Build a light→dark palette in the order:
+        # Somatomotor, Visual, Ventral/Salience, Dorsal Attn, Default, Control, Limbic
+        # (_schaefer7_from_name gives indices: 0=Visual,1=Somatomotor,2=DorsAttn,3=Ventral/Sal,
+        #  4=Limbic, 5=Control, 6=Default)
+
+        # You can change 'Blues' to any sequential cmap you like: 'Greys', 'Purples', 'cividis', etc.
+        seq_cmap = plt.get_cmap('tab20')
+
+        # sample 7 evenly spaced shades (avoid extremes for visibility)
+        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
+
+        # desired light→dark order mapped to those indices
+        order_idx = [1, 0, 3, 2, 6, 5, 4]   # Somato, Visual, Vent/Sal, DorsAttn, Default, Control, Limbic
+
+        # fill the color for each network index (0..6) so legend & plotting stay in-sync
+        net_colours = [None] * 7
+        for rank, net_idx in enumerate(order_idx):
+            net_colours[net_idx] = shades[rank]
+
+        # ---------------- compute centroids ----------------
+        uniq_layers = np.unique(layers)
+        uniq_nets   = np.unique(nets)
+        centroids = []  # (layer, net, xmean, ymean, count)
+
+        for lyr in uniq_layers:
+            for net in uniq_nets:
+                m = (layers == lyr) & (nets == net)
+                if not np.any(m): continue
+                xy = eigvecs[m][:, [x_dim, y_dim]]
+                if xy.size == 0: continue
+                centroids.append((int(lyr), int(net),
+                                float(np.mean(xy[:, 0])), float(np.mean(xy[:, 1])),
+                                int(xy.shape[0])))
+
+        # ---------------- plot ----------------
+        fig, ax = plt.subplots(figsize=(7, 7))
+        for lyr, net, xm, ym, cnt in centroids:
+            ax.scatter(xm, ym,
+                    s=dot_size,
+                    marker=shapes[int(lyr if mode == "multilayer" else 0)],
+                    facecolor=net_colours[int(net)],
+                    edgecolor='k', linewidths=0.6, alpha=0.95)
+            if annotate:
+                ax.text(xm, ym, f" {network_labels[net]}", va='center', ha='left', fontsize=7, alpha=0.9)
+
+        # fixed unit axes
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xticks([0, 0.5, 1.0])
+        ax.set_yticks([0, 0.5, 1.0])
+        ax.grid(alpha=0.2, linestyle=':')
+
+        # labels/title
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title("Centroids by RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
+
+        # ---------------- legends ----------------
+        net_handles = [Line2D([0],[0], marker='o', color='w',
+                            markerfacecolor=net_colours[i], markeredgecolor='k',
+                            markersize=8, label=network_labels[i])
+                    for i in np.unique(nets)]
+        ax.legend(handles=net_handles, title="RSN",
+                bbox_to_anchor=(1.32, 1), loc='upper left')
+
+        if mode == "multilayer":
+            lyr_handles = [Line2D([0],[0], marker=shapes[i], color='w',
+                                markeredgecolor='k', markersize=8, label=layer_labels[i])
+                        for i in np.unique(layers)]
+            ax.add_artist(ax.legend(handles=lyr_handles, title="Layer", loc='upper right'))
+
+        # ---------------- save ----------------
+        outdir = os.path.join(self.data_dir, name)
+        os.makedirs(outdir, exist_ok=True)
+        if fname is None:
+            fname = f"ScatterCentroids_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}_unitaxes.png"
+        fig.tight_layout()
+        fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
+        plt.close(fig)
+        print("Saved:", os.path.join(outdir, fname))
+
+
+    def plotNetworkCentroids3D(self,
+                            X,
+                            Y=None,
+                            Z=None,
+                            name="Scatter3D_NetCentroids",
+                            dims_to_plot=(0, 1, 2),
+                            x_label="Emb1",
+                            y_label="Emb2",
+                            z_label="Emb3",
+                            network_labels=None,
+                            fname=None,
+                            network_cmap="tab20",
+                            centroid_size=200,
+                            line_alpha=0.6,
+                            equalize_axes=True,
+                            cube_pad=0.08,
+                            proj_type="ortho",
+                            annotate=True,
+                            # coordinate export
+                            write_coords=True,
+                            coords_fname=None,
+                            print_coords=True,
+                            return_coords=True,
+                            # Atlas options
+                            atlas='schaefer',
+                            schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"
+                            ):
+        """
+        3D plot with ONE centroid per network (parcel-mean; if 3N, first averages across layers).
+        Draws a translucent gray, NON-CROSSING cycle so each centroid has exactly two connections.
+        No plane is plotted. Also exports/prints/returns centroid coordinates.
+
+        Strategy for the polyline:
+        - Compute centroids in 3D.
+        - Project centroids to a 2D PCA plane (no plotting of the plane).
+        - Greedily add the shortest 3D edges while:
+                * keeping degree <= 2,
+                * avoiding early cycles (until the last edge),
+                * forbidding intersections in the 2D projection.
+            If this cannot finish, fall back to angle-sorted cycle in the PCA plane (non-crossing).
+        """
+        import os, csv
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+        from matplotlib.lines import Line2D
+        import nibabel as nib
+
+        # ---------- helpers ----------
+        def _load_label_gii(path):
+            g = nib.load(path)
+            labs = np.asarray(g.agg_data(), dtype=int).squeeze()
+            lt = g.labeltable
+            key_to_name = {lab.key: lab.label for lab in lt.labels}
+            return labs, key_to_name
+
+        def _schaefer7_from_name(name: str) -> int:
+            # 0=Visual, 1=Somatomotor, 2=DorsAttn, 3=Ventral/Sal, 4=Limbic, 5=Control, 6=Default
+            n = name.lower()
+            if 'vis' in n: return 0
+            if 'som' in n or 'sommot' in n: return 1
+            if 'dorsattn' in n or ('dors' in n and 'attn' in n): return 2
+            if 'ventattn' in n or 'salventattn' in n or ('vent' in n and 'attn' in n) or 'sal' in n: return 3
+            if 'limbic' in n: return 4
+            if 'cont' in n or 'control' in n or 'frontoparietal' in n or 'fp' in n: return 5
+            if 'default' in n: return 6
+            raise ValueError(f"Unrecognized Schaefer-7 network label: {name}")
+
+        # ---------- networks / N ----------
+        if atlas.lower() == 'schaefer':
+            if schaefer_label_L is None or schaefer_label_R is None:
+                raise ValueError("For atlas='schaefer', provide schaefer_label_L and schaefer_label_R.")
+            L_lab, L_map = _load_label_gii(schaefer_label_L)
+            R_lab, R_map = _load_label_gii(schaefer_label_R)
+            uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+            uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+            nets0 = []
+            for k in uL: nets0.append(_schaefer7_from_name(L_map[k]))
+            for k in uR: nets0.append(_schaefer7_from_name(R_map[k]))
+            networks0 = np.asarray(nets0, int)
+            N = networks0.size
+            if network_labels is None:
+                network_labels = ['Visual','Somatomotor','Dorsal Attn',
+                                'Ventral/Salience','Limbic','Control','Default']
+            net_abbr = ['VIS','SOM','DAN','VAN','LIM','CON','DMN']
+        else:
+            cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
+            networks0 = cats0 - 1
+            N = networks0.size
+            if network_labels is None:
+                network_labels = [
+                    "Visual1","Visual2","Somatomotor","Cingulo-Opercular",
+                    "Dorsal-Attentional","Language","Frontoparietal","Auditory",
+                    "Default","Posterior-Multimodal","Ventral-Multimodal","Orbito-Affective"
+                ]
+            net_abbr = [lab.split()[0][:3].upper() for lab in network_labels]
+
+        # ---------- get x,y,z ----------
+        def _from_matrix(M, dims):
+            nrows, ndims = M.shape
+            i, j, k = dims
+            if i >= ndims or j >= ndims or k >= ndims:  # accept 1-based
+                i, j, k = i-1, j-1, k-1
+            if not (0 <= i < ndims and 0 <= j < ndims and 0 <= k < ndims):
+                raise ValueError(f"dims_to_plot {dims} not in [0..{ndims-1}]")
+            return M[:, i].astype(float), M[:, j].astype(float), M[:, k].astype(float), nrows
+
+        if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
+            x, y, z, nrows = _from_matrix(X, dims_to_plot)
+        else:
+            if Y is None or Z is None:
+                raise ValueError("Provide either a 2D matrix X and dims_to_plot, or explicit vectors X, Y, Z.")
+            x = np.asarray(X, float).squeeze()
+            y = np.asarray(Y, float).squeeze()
+            z = np.asarray(Z, float).squeeze()
+            nrows = x.size
+
+        if nrows == 3*N:
+            mode = "multilayer"
+        elif nrows == N:
+            mode = "single"
+        elif nrows % 3 == 0 and (nrows // 3) == N:
+            mode = "multilayer"
+        else:
+            raise ValueError(f"Data has {nrows} rows, but atlas implies N={N} (expected {N} or {3*N}).")
+
+        # ---------- average to per-parcel, then per-network ----------
+        if mode == "multilayer":
+            x_par = (x[0:N] + x[N:2*N] + x[2*N:3*N]) / 3.0
+            y_par = (y[0:N] + y[N:2*N] + y[2*N:3*N]) / 3.0
+            z_par = (z[0:N] + z[N:2*N] + z[2*N:3*N]) / 3.0
+        else:
+            x_par, y_par, z_par = x, y, z
+
+        kvals = np.array(sorted(np.unique(networks0)))
+        K = len(kvals)
+        cx = np.zeros(K); cy = np.zeros(K); cz = np.zeros(K)
+        n_parcels = np.zeros(K, dtype=int)
+        labels_out = []
+        for idx, k in enumerate(kvals):
+            sel = (networks0 == k)
+            n_parcels[idx] = int(sel.sum())
+            if n_parcels[idx] == 0:
+                cx[idx] = cy[idx] = cz[idx] = np.nan
+            else:
+                cx[idx] = float(np.nanmean(x_par[sel]))
+                cy[idx] = float(np.nanmean(y_par[sel]))
+                cz[idx] = float(np.nanmean(z_par[sel]))
+            labels_out.append(network_labels[k] if 0 <= k < len(network_labels) else f"Net {int(k)}")
+
+        # ---------- build a non-crossing 2-regular graph (cycle) ----------
+        finite = np.isfinite(cx) & np.isfinite(cy) & np.isfinite(cz)
+        idx_map = np.where(finite)[0]
+        if idx_map.size < 3:
+            raise ValueError("Fewer than 3 valid centroids — cannot form non-crossing cycle.")
+        CX, CY, CZ = cx[finite], cy[finite], cz[finite]
+        Kf = idx_map.size
+
+        # PCA projection to 2D for planarity checks (no plane drawn)
+        P = np.vstack([CX, CY, CZ]).T  # (Kf, 3)
+        P -= P.mean(axis=0, keepdims=True)
+        U, S, Vt = np.linalg.svd(P, full_matrices=False)
+        B = U[:, :2] * S[:2]  # (Kf, 2) scores in PCA plane
+
+        # Distances in 3D (we’ll minimize these), but intersection checks in 2D (B-plane)
+        def _pairwise_dists_3d(Q):
+            d = np.linalg.norm(Q[:, None, :] - Q[None, :, :], axis=-1)
+            return d
+        D3 = _pairwise_dists_3d(P)
+
+        # segment intersection test in 2D (proper intersection; ignores shared endpoints)
+        def _intersect_2d(a, b, c, d, eps=1e-12):
+            def orient(p, q, r):
+                return (q[0]-p[0])*(r[1]-p[1]) - (q[1]-p[1])*(r[0]-p[0])
+            def on_seg(p, q, r):
+                return (min(p[0], r[0])-eps <= q[0] <= max(p[0], r[0])+eps and
+                        min(p[1], r[1])-eps <= q[1] <= max(p[1], r[1])+eps)
+            o1 = orient(a, b, c); o2 = orient(a, b, d)
+            o3 = orient(c, d, a); o4 = orient(c, d, b)
+            # general case
+            if (o1*o2 < 0) and (o3*o4 < 0): return True
+            # colinear cases
+            if abs(o1) < eps and on_seg(a, c, b): return True
+            if abs(o2) < eps and on_seg(a, d, b): return True
+            if abs(o3) < eps and on_seg(c, a, d): return True
+            if abs(o4) < eps and on_seg(c, b, d): return True
+            return False
+
+        # Disjoint-set (union-find) to avoid early cycles
+        parent = list(range(Kf))
+        rank = [0]*Kf
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra == rb: return False
+            if rank[ra] < rank[rb]:
+                parent[ra] = rb
+            elif rank[ra] > rank[rb]:
+                parent[rb] = ra
+            else:
+                parent[rb] = ra
+                rank[ra] += 1
+            return True
+
+        # Candidate edges sorted by 3D length
+        cand = []
+        for i in range(Kf):
+            for j in range(i+1, Kf):
+                cand.append((D3[i, j], i, j))
+        cand.sort(key=lambda t: t[0])
+
+        deg = np.zeros(Kf, dtype=int)
+        edges = []
+
+        def _crosses_any(i, j):
+            p1, p2 = B[i], B[j]
+            for (a, b) in edges:
+                if len({i, j, a, b}) < 4:  # shares endpoint -> allowed
+                    continue
+                if _intersect_2d(p1, p2, B[a], B[b]):
+                    return True
+            return False
+
+        for w, i, j in cand:
+            if deg[i] == 2 or deg[j] == 2:
+                continue
+            # avoid intersections
+            if _crosses_any(i, j):
+                continue
+            # avoid early cycles (unless final edge)
+            same_comp = (find(i) == find(j))
+            if same_comp and len(edges) != Kf - 1:
+                continue
+            # final edge still must not intersect
+            if same_comp and _crosses_any(i, j):
+                continue
+            # accept
+            edges.append((i, j))
+            union(i, j)
+            deg[i] += 1
+            deg[j] += 1
+            if len(edges) == Kf:
+                break
+
+        # Fallback: if we couldn't make a single 2-regular cycle, use angle order (non-crossing)
+        if not (len(edges) == Kf and np.all(deg == 2)):
+            edges = []
+            deg[:] = 0
+            # order by angle around centroid in PCA plane
+            ctr = B.mean(axis=0)
+            ang = np.arctan2(B[:,1]-ctr[1], B[:,0]-ctr[0])
+            order = np.argsort(ang)
+            for u, v in zip(order, np.roll(order, -1)):
+                edges.append((u, v))
+            deg += 2  # each node has two edges in a cycle
+
+        # ---------- figure ----------
+        fig = plt.figure(figsize=(8.4, 7.8))
+        ax = fig.add_subplot(111, projection='3d')
+        try: ax.set_proj_type(proj_type)
+        except Exception: pass
+
+        # ---------- colors ----------
+        # We want discrete shades going light→dark in the order:
+        # Somatomotor (1), Visual (0), Vent/Sal (3), DorsAttn (2), Default (6), Control (5), Limbic (4)
+        if len(network_labels) == 7:
+            # Use a sequential cmap if provided; if a qualitative cmap is passed, the ramp may not be light→dark.
+            try:
+                seq_cmap = plt.get_cmap(network_cmap)
+            except Exception:
+                seq_cmap = plt.get_cmap('tab20')
+
+            shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]  # avoid extremes
+            order_idx = [1, 0, 3, 2, 6, 5, 4]  # desired light→dark order
+            net_colours = [None] * 7
+            for rank, net_idx in enumerate(order_idx):
+                net_colours[net_idx] = shades[rank]
+        else:
+            # Fallback for non-7-network sets: categorical palette
+            cmap = plt.get_cmap(network_cmap, len(network_labels))
+            net_colours = [cmap(i) for i in range(len(network_labels))]
+
+        # centroids
+        for local_idx, g_idx in enumerate(idx_map):
+            net_idx = int(kvals[g_idx])
+            if len(network_labels) == 7 and 0 <= net_idx < 7:
+                col = net_colours[net_idx]
+            else:
+                col = net_colours[net_idx % len(net_colours)]
+            ax.scatter(CX[local_idx], CY[local_idx], CZ[local_idx],
+                    s=centroid_size, marker='o',
+                    facecolor=col, edgecolor='k', linewidths=0.6, alpha=0.95)
+
+        # labels
+        if annotate:
+            for local_idx, g_idx in enumerate(idx_map):
+                kidx = int(kvals[g_idx])
+                short = (net_abbr[kidx] if 0 <= kidx < len(net_abbr)
+                        else labels_out[g_idx][:3].upper())
+                ax.text(CX[local_idx], CY[local_idx], CZ[local_idx],
+                        f"  {short}", fontsize=8, va='center')
+
+        # non-crossing gray polyline (each centroid degree 2, single cycle)
+        for (i, j) in edges:
+            ax.plot([CX[i], CX[j]], [CY[i], CY[j]], [CZ[i], CZ[j]],
+                    color='gray', alpha=line_alpha, lw=2.0)
+
+        # axes & look
+        ax.set_xlabel(x_label); ax.set_ylabel(y_label); ax.set_zlabel(z_label)
+        ax.set_title("Network centroids (non-crossing 2-regular cycle)")
+
+        def _cube_limits(xs, ys, zs):
+            xlo, xhi = np.nanmin(xs), np.nanmax(xs)
+            ylo, yhi = np.nanmin(ys), np.nanmax(ys)
+            zlo, zhi = np.nanmin(zs), np.nanmax(zs)
+            xm, ym, zm = (xlo + xhi)/2.0, (ylo + yhi)/2.0, (zlo + zhi)/2.0
+            r = max(xhi - xlo, yhi - ylo, zhi - zlo) * 0.5
+            r = r if np.isfinite(r) and r > 0 else 1.0
+            r *= (1.0 + float(cube_pad))
+            return (xm - r, xm + r), (ym - r, ym + r), (zm - r, zm + r)
+
+        if equalize_axes:
+            (xl, xh), (yl, yh), (zl, zh) = _cube_limits(CX, CY, CZ)
+            ax.set_xlim(xl, xh); ax.set_ylim(yl, yh); ax.set_zlim(zl, zh)
+            try: ax.set_box_aspect((1, 1, 1))
+            except Exception: pass
+
+        ax.view_init(elev=22, azim=38)
+
+        # ---------- legend (present networks, in light→dark order) ----------
+        if len(network_labels) == 7:
+            present = set(int(kvals[g_idx]) for g_idx in idx_map)
+            legend_order = [i for i in [1, 0, 3, 2, 6, 5, 4] if i in present]
+        else:
+            present = [int(kvals[g_idx]) for g_idx in idx_map]
+            legend_order = [k for k in range(len(network_labels)) if k in present]
+
+        handles = [Line2D([0],[0], marker='o', color='w',
+                        markerfacecolor=(net_colours[k] if len(network_labels) == 7
+                                        else net_colours[k % len(net_colours)]),
+                        markeredgecolor='k', markersize=8,
+                        label=(network_labels[k] if 0 <= k < len(network_labels) else f"Net {k}"))
+                for k in legend_order]
+        ax.legend(handles=handles, title="RSN", loc='upper right')
+
+        # ---------- save fig ----------
+        outdir = os.path.join(self.data_dir, name)
+        os.makedirs(outdir, exist_ok=True)
+        if fname is None:
+            if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
+                i, j, k = dims_to_plot
+                fname = f"NetCentroids3D_d{i+1}{j+1}{k+1}.png"
+            else:
+                fname = "NetCentroids3D.png"
+        fig.tight_layout()
+        fpath = os.path.join(outdir, fname)
+        fig.savefig(fpath, dpi=500, bbox_inches="tight")
+        plt.close(fig)
+        print("Saved:", fpath)
+
+        # ---------- export/print/return coordinates ----------
+        rows = []
+        for idx, k in enumerate(kvals):
+            rows.append({
+                "network_index": int(k),
+                "network_name": labels_out[idx],
+                "x": float(cx[idx]),
+                "y": float(cy[idx]),
+                "z": float(cz[idx]),
+                "n_parcels": int(n_parcels[idx]),
+            })
+
+        if write_coords:
+            if coords_fname is None:
+                if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
+                    i, j, k = dims_to_plot
+                    coords_fname = f"NetCentroids3D_d{i+1}{j+1}{k+1}_coords.csv"
+                else:
+                    coords_fname = "NetCentroids3D_coords.csv"
+            cpath = os.path.join(outdir, coords_fname)
+            with open(cpath, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["network_index", "network_name", "x", "y", "z", "n_parcels"])
+                for r in rows:
+                    w.writerow([r["network_index"], r["network_name"],
+                                f"{r['x']:.6f}", f"{r['y']:.6f}", f"{r['z']:.6f}", r["n_parcels"]])
+            print("Saved centroid coordinates:", cpath)
+
+        if print_coords:
+            print("Centroid coordinates (network_index, name, x, y, z, n_parcels):")
+            for r in rows:
+                print(f"{r['network_index']:>2}  {r['network_name']:<16}  "
+                    f"{r['x']: .6f}  {r['y']: .6f}  {r['z']: .6f}   {r['n_parcels']}")
+
+        return rows if return_coords else None
+
+
+    def run_ff_fb_models(self,
+        layers,                     # [Sup, Middle, Deep] (each n_parcels,)
+        y_send,                     # efferent rDCM gradient (n_parcels,)
+        y_recv,                     # afferent rDCM gradient (n_parcels,)
+        outdir,                     # REQUIRED: directory to save outputs
+        fname,                      # REQUIRED: filename for the bar plot (e.g., "ff_fb_partial_bars.svg")
+        robust_se="HC3",
+        fdr_alpha=0.05,
+        orthogonalize=True,
+        xlim=(-0.6, 0.6),
+        dpi=500,
+    ):
+        """
+        Builds FB & SD contrasts from layer maps, runs the same regression for:
+            send, recv, and send-recv (z-scored difference).
+        ALWAYS saves a 3-panel horizontal bar plot and a CSV next to it.
+
+        Bars = partial correlations (unique effects)
+        Labels = p(FDR) and ΔR² (unique variance)
+        Returns: (df, fig_path, csv_path)
+        """
+        import os, numpy as np, pandas as pd, statsmodels.api as sm
+        import matplotlib.pyplot as plt
+        from scipy.stats import zscore
+        from statsmodels.stats.multitest import multipletests
+
+        # --- unpack, clean
+        Sup, Mid, Deep = [np.asarray(v).ravel() for v in layers]
+        y_send = np.asarray(y_send).ravel()
+        y_recv = np.asarray(y_recv).ravel()
+        M = np.column_stack([Sup, Mid, Deep, y_send, y_recv])
+        valid = np.all(np.isfinite(M), axis=1)
+        Sup, Mid, Deep, y_send, y_recv = [v[valid] for v in (Sup, Mid, Deep, y_send, y_recv)]
+
+        # --- z-score layer maps
+        Sup_z, Mid_z, Deep_z = [zscore(v, ddof=1) for v in (Sup, Mid, Deep)]
+
+        # Planned contrasts
+        C_FB = 0.5*Sup_z - 1.0*Mid_z + 0.5*Deep_z           # (Sup+Deep)/2 - Middle
+        C_SD = 0.5*Sup_z + 0.0*Mid_z - 0.5*Deep_z           # (Sup - Deep)/2
+
+        # Optional orthogonalization: SD ⟂ FB
+        if orthogonalize:
+            proj = np.dot(C_SD, C_FB) / np.dot(C_FB, C_FB)
+            C_SD = C_SD - proj * C_FB
+
+        # Final z-scaling of predictors
+        C_FB = zscore(C_FB, ddof=1)
+        C_SD = zscore(C_SD, ddof=1)
+
+        def fit_one(y):
+            y_z = zscore(y, ddof=1)
+            X = np.column_stack([C_FB, C_SD])
+            X = sm.add_constant(X)
+            res = sm.OLS(y_z, X).fit(cov_type=robust_se) if robust_se else sm.OLS(y_z, X).fit()
+            betas = res.params[1:]              # standardized betas
+            tvals = res.tvalues[1:]
+            pvals = res.pvalues[1:]
+            df = res.df_resid
+            # partial r from t
+            pr = np.sign(tvals) * np.sqrt((tvals**2) / (tvals**2 + df))
+            # unique ΔR² via drop-one
+            R2_full = res.rsquared
+            dR2 = []
+            for k in (0,1):
+                cols = [i for i in (0,1) if i != k]
+                X_red = np.column_stack([C_FB, C_SD])[:, cols]
+                X_red = sm.add_constant(X_red)
+                r2_red = sm.OLS(y_z, X_red).fit(cov_type=robust_se).rsquared if robust_se \
+                        else sm.OLS(y_z, X_red).fit().rsquared
+                dR2.append(R2_full - r2_red)
+            return betas, pr, np.asarray(pvals), np.asarray(dR2), R2_full
+
+        # Fit 3 outcomes
+        b_send, pr_send, p_send, dR2_send, R2_send = fit_one(y_send)
+        b_recv, pr_recv, p_recv, dR2_recv, R2_recv = fit_one(y_recv)
+        y_diff = zscore(y_send, ddof=1) - zscore(y_recv, ddof=1)
+        b_diff, pr_diff, p_diff, dR2_diff, R2_diff = fit_one(y_diff)
+
+        # Assemble tidy table
+        rows = []
+        for outcome, bs, prs, ps, dR2, R2 in [
+            ("send",  b_send, pr_send, p_send, dR2_send, R2_send),
+            ("recv",  b_recv, pr_recv, p_recv, dR2_recv, R2_recv),
+            ("diff",  b_diff, pr_diff, p_diff, dR2_diff, R2_diff),
+        ]:
+            rows += [
+                {"outcome": outcome, "predictor": "FB", "beta_std": bs[0], "partial_r": prs[0], "p": ps[0],
+                "unique_R2": dR2[0], "R2_full": R2},
+                {"outcome": outcome, "predictor": "SD", "beta_std": bs[1], "partial_r": prs[1], "p": ps[1],
+                "unique_R2": dR2[1], "R2_full": R2},
+            ]
+        df = pd.DataFrame(rows)
+
+        # BH–FDR across 6 tests
+        df["p_FDR"] = multipletests(df["p"].values, alpha=fdr_alpha, method="fdr_bh")[1]
+        df["sig_FDR"] = df["p_FDR"] < fdr_alpha
+
+        # --- Make & SAVE plot (always)
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 3, figsize=(10, 3.6), sharex=True, sharey=True)
+        outcomes = ["send", "recv", "diff"]
+        preds = ["FB", "SD"]
+
+        for j, outcome in enumerate(outcomes):
+            ax = axes[j]
+            sub = df[df["outcome"] == outcome].set_index("predictor").loc[preds].reset_index()
+            y_pos = np.arange(len(preds))
+            ax.barh(y_pos, sub["partial_r"].values)
+            ax.axvline(0, lw=1)
+            ax.set_xlim(*xlim)
+            if j == 0:
+                ax.set_yticks(y_pos, labels=preds)
+            else:
+                ax.set_yticks(y_pos, labels=["", ""])
+            ax.set_title(outcome)
+            ax.invert_yaxis()
+            ax.spines['right'].set_visible(False)
+            ax.spines['top'].set_visible(False)
+            # annotate p(FDR) & ΔR²
+            for i, row in sub.iterrows():
+                mark = "★" if row["sig_FDR"] else ""
+                ax.text(xlim[1], i, f" {mark} p(FDR)={row['p_FDR']:.3g} · ΔR²={row['unique_R2']:.3f}",
+                        va="center", ha="left", fontsize=8)
+
+        fig.suptitle("Partial correlations of FF/FB contrasts with rDCM outcomes")
+        fig.supxlabel("Partial correlation (unique effect)")
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # ensure directory and save both files
+        os.makedirs(outdir, exist_ok=True)
+        fig_path = os.path.join(outdir, fname)
+        fig.savefig(fig_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+
+        base = os.path.splitext(fname)[0]
+        csv_path = os.path.join(outdir, f"{base}.csv")
+        df.to_csv(csv_path, index=False)
+
+        return df, fig_path, csv_path
+
+    # def plot_horizontal_correlation_bar(self, layers, gradient, outdir, fname, layer_names=None, title="Effective connectivity and intralaminar difference gradients",
+    #                                     xlabel="Correlation with efferent-afferent effective conn. gradient", xlim=(-1.0, 1.0), save_path=None):
+
+    #     from scipy.stats import pearsonr
+
+    #     layers = [np.asarray(l).ravel() for l in layers]
+    #     gradient = np.asarray(gradient).ravel()
+
+    #     if any(len(l) != len(gradient) for l in layers):
+    #         raise ValueError("All layer vectors must have the same length as the gradient.")
+
+    #     n = len(layers)
+    #     if layer_names is None:
+    #         layer_names = [f"Layer {i+1}" for i in range(n)]
+
+    #     # Compute correlations and p-values
+    #     corrs, pvals = [], []
+    #     for l in layers:
+    #         r, p = pearsonr(gradient, l)
+    #         corrs.append(r)
+    #         pvals.append(p)
+
+    #     print(corrs)
+    #     print(pvals)
+
+    #     fig, ax = plt.subplots(figsize=(7, 3.2))
+    #     y = np.arange(n)
+    #     ax.barh(y, corrs)        # horizontal bars
+    #     ax.set_yticks(y, labels=layer_names)
+    #     ax.set_xlim(*xlim)
+    #     ax.axvline(0)            # reference line at zero
+    #     ax.set_xlabel(xlabel)
+    #     ax.set_title(title)
+    #     ax.invert_yaxis()        # Layer 1 at top
+    #     ax.spines['right'].set_visible(False)
+    #     ax.spines['top'].set_visible(False)
+    #     fig.tight_layout()
+    #     fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
+
+
+    def plot_horizontal_correlation_bar(
+        self,
+        layers,
+        gradient,
+        outdir,
+        fname,
+        layer_names=None,
+        title="Effective connectivity vs. laminar indices",
+        xlabel="Association with send/receive gradient",
+        xlim=(-0.8, 0.8),
+        save_path=None,
+        alpha=0.05,
+        robust_se="HC3",        # None for classic OLS SEs
+        do_fdr=True,
+        ridge_alpha=None,       # e.g., 1.0 to add a ridge sensitivity
+    ):
+        """
+        Bars = partial correlations from a joint model y ~ superficial + middle + deep
+        Dots = marginal Pearson r (your original numbers)
+        Also saves a CSV with betas, partial r, marginal r, ΔR², VIF, FDR p.
+        """
+        import os, numpy as np, pandas as pd, matplotlib.pyplot as plt
+        from scipy.stats import pearsonr, zscore
+        import statsmodels.api as sm
+        from statsmodels.stats.multitest import multipletests
+        from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+        X_list = [np.asarray(l).ravel() for l in layers]
+        y = np.asarray(gradient).ravel()
+        if any(len(l) != len(y) for l in X_list):
+            raise ValueError("All layer vectors must have the same length as the gradient.")
+        p = len(X_list)
+        if layer_names is None:
+            layer_names = [f"Layer {i+1}" for i in range(p)]
+
+        # stack & clean
+        X = np.column_stack(X_list)
+        valid = np.isfinite(y) & np.all(np.isfinite(X), axis=1)
+        X, y = X[valid, :], y[valid]
+
+        # --- marginal correlations (your original numbers)
+        marg_r, marg_p = zip(*[pearsonr(y, X[:, i]) for i in range(p)])
+        marg_r, marg_p = np.asarray(marg_r), np.asarray(marg_p)
+
+        # --- standardize for comparable betas
+        y_z = zscore(y, ddof=1)
+        X_z = zscore(X, axis=0, ddof=1)
+
+        # multicollinearity diagnostic
+        vifs = [variance_inflation_factor(X_z, i) for i in range(p)]
+
+        # --- OLS partial effects
+        X_fit = sm.add_constant(X_z)
+        ols = sm.OLS(y_z, X_fit)
+        res = ols.fit(cov_type=robust_se) if robust_se else ols.fit()
+        betas = res.params[1:]; tvals = res.tvalues[1:]; pvals = res.pvalues[1:]
+        df_resid = int(res.df_resid); R2_full = float(res.rsquared)
+
+        # partial r from t
+        partial_r = np.sign(tvals) * np.sqrt((tvals**2) / (tvals**2 + df_resid))
+
+        # unique variance (ΔR²)
+        unique_r2 = []
+        for k in range(p):
+            cols = [i for i in range(p) if i != k]
+            res_red = sm.OLS(y_z, sm.add_constant(X_z[:, cols])).fit(cov_type=robust_se) if robust_se \
+                    else sm.OLS(y_z, sm.add_constant(X_z[:, cols])).fit()
+            unique_r2.append(R2_full - float(res_red.rsquared))
+        unique_r2 = np.asarray(unique_r2)
+
+        # optional ridge sensitivity (doesn't affect bars; just logged)
+        ridge_info = {}
+        if ridge_alpha is not None:
+            # closed-form ridge on standardized X: beta = (X'X + λI)^-1 X'y
+            lam = float(ridge_alpha)
+            XtX = X_z.T @ X_z
+            beta_ridge = np.linalg.solve(XtX + lam * np.eye(p), X_z.T @ y_z)
+            ridge_info = {"ridge_alpha": lam, "beta_ridge_std": beta_ridge}
+
+        # FDR across the three predictors (widen this family if you combine send+receive)
+        if do_fdr:
+            rej, p_fdr, _, _ = multipletests(pvals, alpha=alpha, method="fdr_bh")
+        else:
+            rej, p_fdr = np.array([p < alpha for p in pvals]), pvals
+
+        # --- plot: bars = partial r; dots = marginal r
+        fig, ax = plt.subplots(figsize=(7.6, 3.4))
+        y_pos = np.arange(p)
+        ax.barh(y_pos, partial_r)
+        ax.plot(marg_r, y_pos, 'o', markersize=5)  # dots for marginal r
+        ax.axvline(0, lw=1)
+        ax.set_yticks(y_pos, labels=layer_names)
+        ax.set_xlim(*xlim)
+        ax.set_xlabel(xlabel)
+        ax.set_title(title)
+        ax.invert_yaxis()
+        ax.spines['right'].set_visible(False); ax.spines['top'].set_visible(False)
+
+        # annotate p(FDR) and ΔR²
+        for i, (pf, ur2, sig) in enumerate(zip(p_fdr, unique_r2, rej)):
+            mark = "★" if sig else ""
+            ax.text(xlim[1], i, f" {mark} p(FDR)={pf:.3g} · ΔR²={ur2:.3f}",
+                    va="center", ha="left", fontsize=8)
+
+        fig.tight_layout()
+        os.makedirs(outdir, exist_ok=True)
+        path = os.path.join(outdir, fname)
+        fig.savefig(path, dpi=500, bbox_inches="tight")
+
+        # table for methods/results
+        df = pd.DataFrame({
+            "predictor": layer_names,
+            "marginal_r": marg_r,
+            "marginal_p": marg_p,
+            "beta_std": betas,
+            "partial_r": partial_r,
+            "p": pvals,
+            "p_fdr": p_fdr,
+            "sig_fdr": rej,
+            "unique_R2": unique_r2,
+            "VIF": vifs,
+            "R2_full_model": R2_full,
+            "df_resid": df_resid,
+        })
+        if ridge_info:
+            for i, name in enumerate(layer_names):
+                df.loc[i, "beta_ridge_std"] = ridge_info["beta_ridge_std"][i]
+            df.attrs.update(ridge_info)
+
+        csv_path = os.path.join(outdir, os.path.splitext(fname)[0] + ".csv")
+        df.to_csv(csv_path, index=False)
+
+        # console hints
+        print(df)
+        if any(v > 5 for v in vifs):
+            print(f"[warn] High collinearity (VIF>5): {vifs}. Consider ridge_alpha=1.0 sensitivity or contrasts.")
+
+        return df, res
+
 
 
     def plotTwoDimEmbedding_byNetwork(self,
@@ -1008,7 +2173,7 @@ class LaminarRestingState:
         name,
         vmin=None,
         vmax=None,
-        cm="RdBu_r",
+        cm="cividis",
         noSubcortical=True,
         titles=["Deep", "Middle", "Superficial", "Average"],
         folder_name="eigenvector_layers",
@@ -1680,7 +2845,7 @@ class LaminarRestingState:
         
         for ax, (i, j) in zip(axes.flat, pairs):
             C = corr_mats[(i, j)]
-            im = ax.imshow(C, vmin=-1, vmax=1, cmap='RdBu_r')
+            im = ax.imshow(C, vmin=-1, vmax=1, cmap='cividis')
             ax.set_title(f"Layer {i} vs Layer {j}")
             # ax.set_xticklabels(tick_labels)
             # ax.set_yticklabels(tick_labels)

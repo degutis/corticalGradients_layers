@@ -209,5 +209,7 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM022"
+    subject = "sub-LAM007"
+    # studyDir = "/media/miplab-nas2/Data/Karolis/high_res_resting"
+    # subject = "sub-02"
     process_ref_anat_subject(studyDir, subject)

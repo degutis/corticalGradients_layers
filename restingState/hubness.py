@@ -122,7 +122,8 @@ output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives
 os.makedirs(output_dir, exist_ok=True)
 
 adjs = []
-subjects = ["sub-LAM001","sub-LAM002","sub-LAM003","sub-LAM004","sub-LAM005","sub-LAM006","sub-LAM009","sub-LAM011"]
+subjects = ["sub-LAM001","sub-LAM002","sub-LAM003","sub-LAM004","sub-LAM005","sub-LAM006","sub-LAM009","sub-LAM010","sub-LAM011",
+            "sub-LAM012","sub-LAM013","sub-LAM015","sub-LAM016","sub-LAM017","sub-LAM018","sub-LAM019","sub-LAM021","sub-LAM022"]
 for s in subjects:
     adj = parcel_layer_adjacency_10(subject=s, runNum="run1", layer_01=True, out_base_dir=output_dir)
     adjs.append(adj)
@@ -131,7 +132,7 @@ stacked = np.stack(adjs, axis=-1)    # (400, 400, N)
 mean_adj = stacked.mean(axis=2)      # (400, 400)
 
 n_components = 5
-G, A = laman.run_gradient_analysis_affinity(mean_adj, n_components=n_components, approach="dm", kernel="cosine", random_state=13011995)
+G, A = laman.run_gradient_analysis_affinity(mean_adj, n_components=n_components, approach="dm", kernel=None, random_state=13011995)
 np.save(os.path.join(output_dir, 'gradients_Hubness_Schaefer.npy'), G)
 
 for i in range(n_components):

@@ -7,7 +7,6 @@ from scipy.optimize import lsq_linear
 import matplotlib.pyplot as plt
 from brainspace.gradient import GradientMaps
 import matplotlib as mpl
-from brainspace.gradient.kernels import compute_affinity
 
 
 
@@ -44,78 +43,101 @@ def run_gradient_analysis_affinity(conn_matrix, n_components=10, kernel="cosine"
 
 
 
-def _split_layers(G1080, N=360):
-    assert G1080.ndim == 2 and G1080.shape[0] == 3*N, f"Expected (3*{N} x k); got {G1080.shape}"
-    return G1080[0:N, :], G1080[N:2*N, :], G1080[2*N:3*N, :]
+def _split_layers(G, N=360):
+    """
+    Split (L*N x k) matrix into L layers of shape (N x k).
+    """
+    assert G.ndim == 2, f"Expected 2D array; got {G.ndim}D"
+    L, rem = divmod(G.shape[0], N)
+    assert rem == 0 and L >= 1, f"Expected (L*{N} x k); got {G.shape}"
+    return [G[i*N:(i+1)*N, :] for i in range(L)]
 
 def _l2_normalize_rows(X, eps=1e-12):
     norms = np.linalg.norm(X, axis=1, keepdims=True)
     norms = np.maximum(norms, eps)
     Y = X / norms
-    # keep exact zeros as zeros
     zero_rows = np.isclose(np.linalg.norm(X, axis=1), 0.0)
     if np.any(zero_rows):
         Y[zero_rows, :] = 0.0
     return Y
 
-def inter_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False):
+def _equidistant_layer_indices(L):
+    """
+    Return three ~equidistant layer indices (0-based) spanning [0, L-1],
+    excluding hard endpoints when possible:
+      idx = ceil([L/4, L/2, 3L/4]) - 1
+    For L=8 -> (1, 3, 5)  (i.e., 2, 4, 6 in 1-based terms).
+    """
+    if L < 3:
+        raise ValueError("Need at least 3 layers to choose superficial/middle/deep.")
+    idx = np.ceil(np.array([1, 2, 3]) * L / 4.0).astype(int) - 1
+    idx = np.clip(idx, 0, L-1)
+    # If duplicates occur for small L, spread them sensibly.
+    if len(np.unique(idx)) < 3:
+        idx = np.rint(np.linspace(0, L-1, 3)).astype(int)
+    return tuple(np.sort(idx).tolist())  # (superficial, middle, deep)
+
+
+def inter_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False):
     """
     D_inter[i] = mean cosine distance between parcel i's laminar profile and all other parcels' profiles.
-    G1080: (1080 x k) gradients in a *joint* embedding.
-    Returns: (N,) array.
+    G_all: (L*N x k) gradients from a joint embedding.
+    Returns:
+      - If L == 3: (distanceSum, distanceSum_deep, distanceSum_mid, distanceSum_sup)
+      - Else:      (distanceSum, distanceSum_layers) where distanceSum_layers has shape (L, N)
     """
-    Gd, Gm, Gs = _split_layers(G1080, N=N)
+    layers = _split_layers(G_all, N=N)   # list of length L; each (N x k)
+    L = len(layers)
 
     if zscore_within_layer:
-        Gd = (Gd - Gd.mean(axis=0, keepdims=True)) / (Gd.std(axis=0, keepdims=True) + 1e-12)
-        print(Gd.shape)
-        Gm = (Gm - Gm.mean(axis=0, keepdims=True)) / (Gm.std(axis=0, keepdims=True) + 1e-12)
-        Gs = (Gs - Gs.mean(axis=0, keepdims=True)) / (Gs.std(axis=0, keepdims=True) + 1e-12)
+        layers = [
+            (X - X.mean(axis=0, keepdims=True)) / (X.std(axis=0, keepdims=True) + 1e-12)
+            for X in layers
+        ]
 
-    Ud = _l2_normalize_rows(Gd)
-    Um = _l2_normalize_rows(Gm)
-    Us = _l2_normalize_rows(Gs)
+    # Unit-row embeddings per layer
+    U_layers = [_l2_normalize_rows(X) for X in layers]
 
-    # (N x 3k) laminar profile per parcel (unit rows → cosine similarity via dot)
-    P = np.concatenate([Ud, Um, Us], axis=1)
+    # (N x (L*k)) laminar profile per parcel (concatenate along features)
+    P = np.concatenate(U_layers, axis=1)
 
-    mpl.rcParams['svg.fonttype'] = 'none'   # keep text as <text>, not paths
-    mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
-
+    # Plot concatenated profile matrix
+    mpl.rcParams['svg.fonttype'] = 'none'
+    mpl.rcParams['text.usetex'] = False
     plt.figure(figsize=(6, 6))
-    plt.imshow(P, cmap="RdBu_r")
+    plt.imshow(P, cmap="cividis")
     plt.title("ConcatMatrix P - inter areal dis")
     plt.savefig(f"{outputDir}/ConcatMatrixP_inter.svg", bbox_inches="tight", format="svg")
     plt.close()
 
-
-    # cosine distance matrix
-    S = P @ P.T              # similarities, diag ~ 1
-    D = 1.0 - S              # distances
-
-    D_deep = 1.0 - (Ud @ Ud.T)
-    D_mid = 1.0 - (Um @ Um.T)
-    D_sup = 1.0 - (Us @ Us.T)
-
+    # Cosine distance across concatenated profiles
+    S = P @ P.T          # similarities (diag ~ 1)
+    D = 1.0 - S          # distances
     np.fill_diagonal(D, 0.0)
-    np.fill_diagonal(D_deep, 0.0)
-    np.fill_diagonal(D_mid, 0.0)
-    np.fill_diagonal(D_sup, 0.0)
 
+    # Mean distance per parcel (exclude self)
+    distanceSum = D.sum(axis=1) / (N - 1)
+
+    # Per-layer distances & means
+    D_layers = [1.0 - (U @ U.T) for U in U_layers]
+    for Dl in D_layers:
+        np.fill_diagonal(Dl, 0.0)
+    distanceSum_layers = np.vstack([Dl.sum(axis=1) / (N - 1) for Dl in D_layers])  # (L, N)
+
+    i_sup, i_mid, i_deep = _equidistant_layer_indices(L)
+    distanceSum_sup = distanceSum_layers[i_sup]
+    distanceSum_mid      = distanceSum_layers[i_mid]
+    distanceSum_deep        = distanceSum_layers[i_deep]
+
+    # Plot overall distance matrix and mean-distance column
     plt.figure(figsize=(6, 6))
-    plt.imshow(D, cmap="RdBu_r")
+    plt.imshow(D, cmap="cividis")
     plt.title("Distance matrix - inter areal dis")
     plt.savefig(f"{outputDir}/Matrix_interArealDis.svg", bbox_inches="tight", format="svg")
     plt.close()
 
-    distanceSum = D.sum(axis=1) / (N - 1)
-
-    distanceSum_deep = D_deep.sum(axis=1) / (N - 1)
-    distanceSum_mid = D_mid.sum(axis=1) / (N - 1)
-    distanceSum_sup = D_sup.sum(axis=1) / (N - 1)
-
     plt.figure(figsize=(10, 10))
-    plt.imshow(distanceSum[:, np.newaxis], cmap="RdBu_r")
+    plt.imshow(distanceSum[:, np.newaxis], cmap="cividis")
     plt.title("Distance sum - inter areal dis")
     plt.savefig(f"{outputDir}/Matrix_interArealDisSum.svg", bbox_inches="tight", format="svg")
     plt.close()
@@ -128,87 +150,106 @@ def plotMatrix(M, outputDir, name):
     mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
 
     plt.figure(figsize=(6, 6))
-    plt.imshow(M, cmap="RdBu_r")
+    plt.imshow(M, cmap="cividis")
     plt.title("Adjacency matrix")
     plt.savefig(f"{outputDir}/{name}", bbox_inches="tight", format="svg")
     plt.close()
 
 
-
-def intra_areal_dissimilarity(G1080, outputDir, N=360, zscore_within_layer=False, mode="to_mean"):
+def intra_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False, mode="to_mean"):
+    
     """
     D_intra[i] measures laminar heterogeneity within parcel i.
-    mode="to_mean": average cosine distance of each layer vector to the parcel's mean *direction*.
-    mode="pairwise": mean pairwise cosine distance among the three layers.
-    Returns: (N,) array.
+
+    mode="to_mean":
+        - Average cosine distance of each layer vector to the parcel's mean *direction*.
+        - Returns: (d_intraMean, d_superficial, d_middle, d_deep), each shape (N,).
+
+    mode="pairwise":
+        - Mean pairwise cosine distance among all layers for each parcel.
+        - Returns: (N,) array.
     """
-    Gd, Gm, Gs = _split_layers(G1080, N=N)
+
+    layers = _split_layers(G_all, N=N)          # list length L; each (N x k)
+    L = len(layers)
 
     if zscore_within_layer:
-        Gd = (Gd - Gd.mean(axis=0, keepdims=True)) / (Gd.std(axis=0, keepdims=True) + 1e-12)
-        Gm = (Gm - Gm.mean(axis=0, keepdims=True)) / (Gm.std(axis=0, keepdims=True) + 1e-12)
-        Gs = (Gs - Gs.mean(axis=0, keepdims=True)) / (Gs.std(axis=0, keepdims=True) + 1e-12)
+        layers = [
+            (X - X.mean(axis=0, keepdims=True)) / (X.std(axis=0, keepdims=True) + 1e-12)
+            for X in layers
+        ]
 
-    Ud, Um, Us = _l2_normalize_rows(Gd), _l2_normalize_rows(Gm), _l2_normalize_rows(Gs)
+    # Unit-row embeddings per layer
+    U_layers = [_l2_normalize_rows(X) for X in layers]
 
     mpl.rcParams['svg.fonttype'] = 'none'   # keep text as <text>, not paths
-    mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
-
+    mpl.rcParams['text.usetex'] = False     # avoid TeX
 
     if mode == "to_mean":
-        # Ubar = _l2_normalize_rows((Ud + Um + Us) / 3.0)
-        Ubar = _l2_normalize_rows((Gd + Gm + Gs) / 3.0)
-        print(Ubar.shape)
-        
+        # Mean raw vector across layers per parcel, then L2-normalize rowwise
+        Ubar = _l2_normalize_rows(sum(layers) / float(L))   # (N x k)
+
+        # Debug/QA plot
         plt.figure(figsize=(6, 6))
-        plt.imshow(Ubar, cmap="RdBu_r")
+        plt.imshow(Ubar, cmap="cividis")
         plt.title("Ubar - intra areal dis")
         plt.savefig(f"{outputDir}/Matrix_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
-        d_deep = 1.0 - np.einsum("ij,ij->i", Ud, Ubar)
-        print(d_deep.shape)
+        # Per-layer cosine distance to Ubar
+        d_layers = [1.0 - np.einsum("ij,ij->i", U, Ubar) for U in U_layers]  # list of (N,)
+        D_layers = np.vstack(d_layers)  # (L, N)
 
-        plt.figure(figsize=(10, 10))
-        plt.imshow(d_deep[:,np.newaxis], cmap="RdBu_r")
-        plt.title("D_deep - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_deep_intraArealDis.svg", bbox_inches="tight", format="svg")
+        # Overall mean across layers
+        d_intraMean = D_layers.mean(axis=0)  # (N,)
+
+        # Also save an overview heatmap of per-layer distances (layers x parcels)
+        plt.figure(figsize=(8, 6))
+        plt.imshow(D_layers, aspect='auto', cmap="cividis")
+        plt.title("Per-layer distances to mean direction (layers × parcels)")
+        plt.ylabel("Layer")
+        plt.xlabel("Parcel")
+        plt.savefig(f"{outputDir}/Matrix_intraArealDis_layers.svg", bbox_inches="tight", format="svg")
         plt.close()
 
-
-        d_mid  = 1.0 - np.einsum("ij,ij->i", Um, Ubar)
-
+        # Save overall column image (backward-compatible filename)
         plt.figure(figsize=(10, 10))
-        plt.imshow(d_mid[:,np.newaxis], cmap="RdBu_r")
-        plt.title("D_mid - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_mid_intraArealDis.svg", bbox_inches="tight", format="svg")
-        plt.close()
-
-        d_sup  = 1.0 - np.einsum("ij,ij->i", Us, Ubar)
-        
-        plt.figure(figsize=(10, 10))
-        plt.imshow(d_sup[:,np.newaxis], cmap="RdBu_r")
-        plt.title("D_sup - intra areal dis")
-        plt.savefig(f"{outputDir}/Matrix_sup_intraArealDis.svg", bbox_inches="tight", format="svg")
-        plt.close()
-
-
-        d_intraMean = (d_deep + d_mid + d_sup) / 3.0
-        
-        plt.figure(figsize=(10, 10))
-        plt.imshow(d_intraMean[:,np.newaxis], cmap="RdBu_r")
+        plt.imshow(d_intraMean[:, np.newaxis], cmap="cividis")
         plt.title("D_intraMean - intra areal dis")
         plt.savefig(f"{outputDir}/Matrix_mean_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
 
+        # Pick equidistant layers for (superficial, middle, deep)
+        i_sup, i_mid, i_deep = _equidistant_layer_indices(L)
+        d_superficial = D_layers[i_sup]
+        d_middle      = D_layers[i_mid]
+        d_deep        = D_layers[i_deep]
 
-        return d_intraMean, d_deep, d_mid, d_sup
+        # Optional: save the three selected layers with familiar names
+        for name, vec in [("sup", d_superficial), ("mid", d_middle), ("deep", d_deep)]:
+            plt.figure(figsize=(10, 10))
+            plt.imshow(vec[:, np.newaxis], cmap="cividis")
+            plt.title(f"D_{name} - intra areal dis")
+            plt.savefig(f"{outputDir}/Matrix_{name}_intraArealDis.svg", bbox_inches="tight", format="svg")
+            plt.close()
+
+        return d_intraMean, d_superficial, d_middle, d_deep
 
     elif mode == "pairwise":
-        d_dm = 1.0 - np.einsum("ij,ij->i", Ud, Um)
-        d_ds = 1.0 - np.einsum("ij,ij->i", Ud, Us)
-        d_ms = 1.0 - np.einsum("ij,ij->i", Um, Us)
-        return (d_dm + d_ds + d_ms) / 3.0
+        if L < 2:
+            raise ValueError("pairwise mode requires at least 2 layers.")
+        # Stack to (L, N, k)
+        Ustack = np.stack(U_layers, axis=0)
+
+        # Layer-layer similarities per parcel: S[a,b,i] = dot(U[a,i,:], U[b,i,:])
+        S = np.einsum('aik,bik->abi', Ustack, Ustack)  # (L, L, N)
+
+        # Mean over unique off-diagonal pairs a<b
+        iu = np.triu_indices(L, k=1)
+        mean_S_pairs = S[iu[0], iu[1], :].mean(axis=0)  # (N,)
+        d_pairwise = 1.0 - mean_S_pairs                 # (N,)
+
+        return d_pairwise
 
     else:
         raise ValueError("mode must be 'to_mean' or 'pairwise'")
@@ -220,7 +261,7 @@ def plotFlatMap(
     outname,
     inputdir_1="",
     inputdir_2="/home/degutis/repos/HumanCorticalParcellations",
-    cmap="RdBu_r",
+    cmap="cividis",
     HCP=False,
     vmin=None, vmax=None,
     symmetric=False,         # center color range at 0 if True
