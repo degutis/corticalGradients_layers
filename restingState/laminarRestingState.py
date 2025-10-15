@@ -394,7 +394,6 @@ class LaminarRestingState:
         if full:
             eigvals, eigvecs = scipy.linalg.eigh(L_norm)
             self.num_components = len(eigvals)
-            #self.__validate_eigendecomposition__(self, L_norm, eigvals, eigvecs)
             
         else:
             eigvals, eigvecs = scipy.sparse.linalg.eigsh(L_norm, k=num_components, which='SM')
@@ -403,28 +402,6 @@ class LaminarRestingState:
 
         return eigvals, eigvecs
 
-
-    def __validate_eigendecomposition__(self, L_norm, eigvals, eigvecs, tol=1e-5):
-        if np.any(np.isnan(eigvals)) or np.any(np.isinf(eigvals)):
-            raise ValueError("Eigenvalues contain NaNs or Infs.")
-        if np.any(np.isnan(eigvecs)) or np.any(np.isinf(eigvecs)):
-            raise ValueError("Eigenvectors contain NaNs or Infs.")
-
-        # Reconstruction residual
-        L_reconstructed = eigvecs @ np.diag(eigvals) @ eigvecs.T
-        residual = np.linalg.norm(L_norm - L_reconstructed, ord='fro')
-        if residual > tol:
-            raise ValueError(f"Reconstruction residual too high: {residual}")
-
-        # Orthogonality check
-        I_approx = eigvecs.T @ eigvecs
-        ortho_residual = np.linalg.norm(I_approx - np.eye(eigvecs.shape[1]), ord='fro')
-        if ortho_residual > tol:
-            raise ValueError(f"Eigenvectors not orthonormal: residual = {ortho_residual}")
-
-        # Value range (specific to normalized Laplacians)
-        if np.min(eigvals) < -tol or np.max(eigvals) > 2 + tol:
-            raise ValueError("Eigenvalues outside [0, 2] range.")
 
     def runKMeans(self, eigvecs, name, num_clusters=3, random_state=99, eigvecs_to_plot=[1, 2]):
 
@@ -1717,7 +1694,7 @@ class LaminarRestingState:
         Sup_z, Mid_z, Deep_z = [zscore(v, ddof=1) for v in (Sup, Mid, Deep)]
 
         # Planned contrasts
-        C_FB = 0.5*Sup_z - 1.0*Mid_z + 0.5*Deep_z           # (Sup+Deep)/2 - Middle
+        C_FB = -0.5*Sup_z + 1.0*Mid_z - 0.5*Deep_z           # Middle - (Sup+Deep)/2
         C_SD = 0.5*Sup_z + 0.0*Mid_z - 0.5*Deep_z           # (Sup - Deep)/2
 
         # Optional orthogonalization: SD ⟂ FB
@@ -1819,45 +1796,6 @@ class LaminarRestingState:
         df.to_csv(csv_path, index=False)
 
         return df, fig_path, csv_path
-
-    # def plot_horizontal_correlation_bar(self, layers, gradient, outdir, fname, layer_names=None, title="Effective connectivity and intralaminar difference gradients",
-    #                                     xlabel="Correlation with efferent-afferent effective conn. gradient", xlim=(-1.0, 1.0), save_path=None):
-
-    #     from scipy.stats import pearsonr
-
-    #     layers = [np.asarray(l).ravel() for l in layers]
-    #     gradient = np.asarray(gradient).ravel()
-
-    #     if any(len(l) != len(gradient) for l in layers):
-    #         raise ValueError("All layer vectors must have the same length as the gradient.")
-
-    #     n = len(layers)
-    #     if layer_names is None:
-    #         layer_names = [f"Layer {i+1}" for i in range(n)]
-
-    #     # Compute correlations and p-values
-    #     corrs, pvals = [], []
-    #     for l in layers:
-    #         r, p = pearsonr(gradient, l)
-    #         corrs.append(r)
-    #         pvals.append(p)
-
-    #     print(corrs)
-    #     print(pvals)
-
-    #     fig, ax = plt.subplots(figsize=(7, 3.2))
-    #     y = np.arange(n)
-    #     ax.barh(y, corrs)        # horizontal bars
-    #     ax.set_yticks(y, labels=layer_names)
-    #     ax.set_xlim(*xlim)
-    #     ax.axvline(0)            # reference line at zero
-    #     ax.set_xlabel(xlabel)
-    #     ax.set_title(title)
-    #     ax.invert_yaxis()        # Layer 1 at top
-    #     ax.spines['right'].set_visible(False)
-    #     ax.spines['top'].set_visible(False)
-    #     fig.tight_layout()
-    #     fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
 
 
     def plot_horizontal_correlation_bar(
@@ -1998,7 +1936,6 @@ class LaminarRestingState:
             print(f"[warn] High collinearity (VIF>5): {vifs}. Consider ridge_alpha=1.0 sensitivity or contrasts.")
 
         return df, res
-
 
 
     def plotTwoDimEmbedding_byNetwork(self,
@@ -2409,52 +2346,8 @@ class LaminarRestingState:
             z[np.isinf(z)] = 0
         return z
     
-    def getLabels(self):
-        
-        labels = [
-                'V1_R', 'MST_R', 'V6_R', 'V2_R', 'V3_R', 'V4_R', 'V8_R', '4_R', '3b_R', 'FEF_R',
-                'PEF_R', '55b_R', 'V3A_R', 'RSC_R', 'POS2_R', 'V7_R', 'IPS1_R', 'FFC_R', 'V3B_R', 'LO1_R',
-                'LO2_R', 'PIT_R', 'MT_R', 'A1_R', 'PSL_R', 'SFL_R', 'PCV_R', 'STV_R', '7Pm_R', '7m_R',
-                'POS1_R', '23d_R', 'v23ab_R', 'd23ab_R', '31pv_R', '5m_R', '5mv_R', '23c_R', '5L_R', '24dd_R',
-                '24dv_R', '7AL_R', 'SCEF_R', '6ma_R', '7Am_R', '7Pl_R', '7PC_R', 'LIPv_R', 'VIP_R', 'MIP_R',
-                '1_R', '2_R', '3a_R', '6d_R', '6mp_R', '6v_R', 'p24pr_R', '33pr_R', 'a24pr_R', 'p32pr_R',
-                'a24_R', 'd32_R', '8BM_R', 'p32_R', '10r_R', '47m_R', '8Av_R', '8Ad_R', '9m_R', '8BL_R',
-                '9p_R', '10d_R', '8C_R', '44_R', '45_R', '47l_R', 'a47r_R', '6r_R', 'IFJa_R', 'IFJp_R',
-                'IFSp_R', 'IFSa_R', 'p9-46v_R', '46_R', 'a9-46v_R', '9-46d_R', '9a_R', '10v_R', 'a10p_R', '10pp_R',
-                '11l_R', '13l_R', 'OFC_R', '47s_R', 'LIPd_R', '6a_R', 'i6-8_R', 's6-8_R', '43_R', 'OP4_R',
-                'OP1_R', 'OP2-3_R', '52_R', 'RI_R', 'PFcm_R', 'PoI2_R', 'TA2_R', 'FOP4_R', 'MI_R', 'Pir_R',
-                'AVI_R', 'AAIC_R', 'FOP1_R', 'FOP3_R', 'FOP2_R', 'PFt_R', 'AIP_R', 'EC_R', 'PreS_R', 'H_R',
-                'ProS_R', 'PeEc_R', 'STGa_R', 'PBelt_R', 'A5_R', 'PHA1_R', 'PHA3_R', 'STSda_R', 'STSdp_R', 'STSvp_R',
-                'TGd_R', 'TE1a_R', 'TE1p_R', 'TE2a_R', 'TF_R', 'TE2p_R', 'PHT_R', 'PH_R', 'TPOJ1_R', 'TPOJ2_R',
-                'TPOJ3_R', 'DVT_R', 'PGp_R', 'IP2_R', 'IP1_R', 'IP0_R', 'PFop_R', 'PF_R', 'PFm_R', 'PGi_R',
-                'PGs_R', 'V6A_R', 'VMV1_R', 'VMV3_R', 'PHA2_R', 'V4t_R', 'FST_R', 'V3CD_R', 'LO3_R', 'VMV2_R',
-                '31pd_R', '31a_R', 'VVC_R', '25_R', 's32_R', 'pOFC_R', 'PoI1_R', 'Ig_R', 'FOP5_R', 'p10p_R',
-                'p47r_R', 'TGv_R', 'MBelt_R', 'LBelt_R', 'A4_R', 'STSva_R', 'TE1m_R', 'PI_R', 'a32pr_R', 'p24_R',
-                
-                'V1_L', 'MST_L', 'V6_L', 'V2_L', 'V3_L', 'V4_L', 'V8_L', '4_L', '3b_L', 'FEF_L',
-                'PEF_L', '55b_L', 'V3A_L', 'RSC_L', 'POS2_L', 'V7_L', 'IPS1_L', 'FFC_L', 'V3B_L', 'LO1_L',
-                'LO2_L', 'PIT_L', 'MT_L', 'A1_L', 'PSL_L', 'SFL_L', 'PCV_L', 'STV_L', '7Pm_L', '7m_L',
-                'POS1_L', '23d_L', 'v23ab_L', 'd23ab_L', '31pv_L', '5m_L', '5mv_L', '23c_L', '5L_L', '24dd_L',
-                '24dv_L', '7AL_L', 'SCEF_L', '6ma_L', '7Am_L', '7Pl_L', '7PC_L', 'LIPv_L', 'VIP_L', 'MIP_L',
-                '1_L', '2_L', '3a_L', '6d_L', '6mp_L', '6v_L', 'p24pr_L', '33pr_L', 'a24pr_L', 'p32pr_L',
-                'a24_L', 'd32_L', '8BM_L', 'p32_L', '10r_L', '47m_L', '8Av_L', '8Ad_L', '9m_L', '8BL_L',
-                '9p_L', '10d_L', '8C_L', '44_L', '45_L', '47l_L', 'a47r_L', '6r_L', 'IFJa_L', 'IFJp_L',
-                'IFSp_L', 'IFSa_L', 'p9-46v_L', '46_L', 'a9-46v_L', '9-46d_L', '9a_L', '10v_L', 'a10p_L', '10pp_L',
-                '11l_L', '13l_L', 'OFC_L', '47s_L', 'LIPd_L', '6a_L', 'i6-8_L', 's6-8_L', '43_L', 'OP4_L',
-                'OP1_L', 'OP2-3_L', '52_L', 'RI_L', 'PFcm_L', 'PoI2_L', 'TA2_L', 'FOP4_L', 'MI_L', 'Pir_L',
-                'AVI_L', 'AAIC_L', 'FOP1_L', 'FOP3_L', 'FOP2_L', 'PFt_L', 'AIP_L', 'EC_L', 'PreS_L', 'H_L',
-                'ProS_L', 'PeEc_L', 'STGa_L', 'PBelt_L', 'A5_L', 'PHA1_L', 'PHA3_L', 'STSda_L', 'STSdp_L', 'STSvp_L',
-                'TGd_L', 'TE1a_L', 'TE1p_L', 'TE2a_L', 'TF_L', 'TE2p_L', 'PHT_L', 'PH_L', 'TPOJ1_L', 'TPOJ2_L',
-                'TPOJ3_L', 'DVT_L', 'PGp_L', 'IP2_L', 'IP1_L', 'IP0_L', 'PFop_L', 'PF_L', 'PFm_L', 'PGi_L',
-                'PGs_L', 'V6A_L', 'VMV1_L', 'VMV3_L', 'PHA2_L', 'V4t_L', 'FST_L', 'V3CD_L', 'LO3_L', 'VMV2_L',
-                '31pd_L', '31a_L', 'VVC_L', '25_L', 's32_L', 'pOFC_L', 'PoI1_L', 'Ig_L', 'FOP5_L', 'p10p_L',
-                'p47r_L', 'TGv_L', 'MBelt_L', 'LBelt_L', 'A4_L', 'STSva_L', 'TE1m_L', 'PI_L', 'a32pr_L', 'p24_L'
-            ]
-        
-        return labels
 
-
-    def plotConnectogfram(self, connectivity_matrix, name, layer, color="red", n=360, percent=20):
+    def plotConnectogram(self, connectivity_matrix, name, layer, color="red", n=360, percent=20):
 
         os.makedirs(f"{self.data_dir}/{name}/Connectogram", exist_ok=True)  # Create folder for layer-wise maps
 
@@ -2579,36 +2472,6 @@ class LaminarRestingState:
         edges = [(triu_indices[0][i], triu_indices[1][i]) for i in top_k_indices]
         return edges
 
-    # def calculateRichClub(self, connectivity_matrix, name, layer, threshold=95):
-
-    #     os.makedirs(f"{self.data_dir}/{name}/NetworkMeasures", exist_ok=True)  # Create folder for layer-wise maps
-
-    #     threshold = np.percentile(np.abs(connectivity_matrix), threshold)
-    #     abs_corr_thresh = np.where(np.abs(connectivity_matrix) >= threshold, np.abs(connectivity_matrix), 0)
-        
-    #     G = nx.from_numpy_array(abs_corr_thresh)
-
-    #     rich_club_coeffs = nx.rich_club_coefficient(G, normalized=False, seed=33)
-
-    #     plt.plot(list(rich_club_coeffs.keys()), list(rich_club_coeffs.values()))
-    #     plt.xlabel('Degree k')
-    #     plt.ylabel('Rich Club Coefficient φ(k)')
-    #     plt.title('Rich Club Coefficient Curve (Weighted)')
-    #     plt.grid(True)
-    #     plt.savefig(f"{self.data_dir}/{name}/NetworkMeasures/RichClub_{layer}.png", bbox_inches="tight")
-    #     plt.close()
-
-    #     # Optional: Identify high-degree nodes (e.g., top 5%) as potential rich club members
-    #     degrees = dict(G.degree())
-    #     cutoff = np.percentile(list(degrees.values()), 95)
-    #     rich_club_nodes = [n for n, deg in degrees.items() if deg >= cutoff]
-
-    #     # Save to a text file
-    #     with open(f"{self.data_dir}/{name}/NetworkMeasures/RichClubNodes_{layer}.txt", 'w') as f:
-    #         for node in rich_club_nodes:
-    #             f.write(f"{node}\n")
-
-    #     return rich_club_nodes
 
     def rich_club_sweep(self,
                         connectivity_matrix: np.ndarray,
@@ -2861,191 +2724,6 @@ class LaminarRestingState:
         cbar.set_label('Pearson r')
         
         plt.savefig(f"{self.data_dir}/{name}/CorrelationEigVecsMatrices_First{limit}_Last{end_num}.png", bbox_inches="tight")
-        plt.close()
-
-
-    def identifyEigvecActivityPartOfRS(self, eigvecs_orig, name, ignoreFirst=5, limit=20, end_num=0, thresh=4, adjustSize=True, excludeNone=False):
-        
-        if adjustSize:
-            orig_X = eigvecs_orig.shape[1]
-            end = orig_X - end_num
-
-            if end_num>0:
-                eigvecs = np.hstack([
-                    eigvecs_orig[:, :limit],   # cols 0 … limit-1
-                    eigvecs_orig[:, end:]      # cols end … M-1
-                    ])
-            else:
-                eigvecs = eigvecs_orig[:, ignoreFirst:limit] # ignore the first
-
-        else:
-            eigvecs = eigvecs_orig
-
-        # eigvecs_reshaped = eigvecs.reshape(360, 3, eigvecs.shape[1])
-        # mu    = eigvecs_reshaped.mean(axis=0)
-        # sigma = eigvecs_reshaped.std(axis=0, ddof=0)
-        # z = (eigvecs_reshaped - mu[None, :, :]) / sigma[None, :, :]
-        # bins = ((z < -thresh) | (z > thresh)).astype(int)
-
-        mu_glob    = eigvecs.mean(axis=0)
-        sigma_glob = eigvecs.std (axis=0, ddof=0) 
-
-        z_glob     = (eigvecs - mu_glob[None, :]) / sigma_glob[None, :]
-        bins_glob  = (np.abs(z_glob) > thresh).astype(int)
-        bins = bins_glob.reshape(360, 3, -1)
-
-        cats = np.loadtxt('cortex_parcel_network_assignments.txt', dtype=int)   # shape (360,), values 1…12
-        cats_exp = cats[:, None, None]
-        counts = np.zeros((12, bins.shape[1], bins.shape[2]), dtype=int)
-
-        # Vectorized count over the first axis (360)
-        for k in range(1, 13):
-            mask = (bins == 1) & (cats_exp == k)
-            counts[k-1] = mask.sum(axis=0)
-
-        # counts_dict = {
-        #     k: counts[k-1]
-        #     for k in range(1, 13)
-        # }
-
-        # layer_totals = counts.sum(axis=0)
-
-        # layer_sums = {
-        #     layer_idx + 1: layer_totals[layer_idx]
-        #     for layer_idx in range(layer_totals.shape[0])
-        # }
-
-        cat_counts = counts.sum(axis=2)
-
-        tick_labels = ["Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular", 
-                       "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory", 
-                       "Default", "Posterior-Multimodal","Ventral-Multimodal", "Orbito-Affective"]
-
-        fig, axs = plt.subplots(3, 1, figsize=(8, 10), sharex=True, sharey=True)
-        for layer in range(3):
-            bars = axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
-            axs[layer].bar(np.arange(1, 13), cat_counts[:, layer])
-            axs[layer].set_title(f'Layer {layer+1}')
-            axs[layer].set_ylabel('Outlier Count')
-            # annotate each bar with its height
-            for bar in bars:
-                height = bar.get_height()
-                axs[layer].text(
-                    bar.get_x() + bar.get_width() / 2,
-                    height,
-                    f'{int(height)}',
-                    ha='center',
-                    va='bottom'
-        )
-
-        axs[-1].set_xlabel('Resting State Networks')
-        plt.xticks(np.arange(1,13), tick_labels, rotation=90)
-        plt.tight_layout()
-        if adjustSize:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_First{limit}_Last{end_num}.png", bbox_inches="tight")
-        else:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN.png", bbox_inches="tight")
-        plt.close()
-
-
-
-        n_networks = len(tick_labels)
-        ncols = 3
-        nrows = int(np.ceil(n_networks / ncols))
-
-        fig, axs = plt.subplots(nrows, ncols, figsize=(12, 10), sharey=True)
-        axs = axs.ravel()  # flatten for easy indexing
-
-        layer_names = ["Deep", "Middle", "Superficial"]
-        layers = np.arange(1, 4)
-        
-        n_networks = len(tick_labels)
-        ncols = 3
-        nrows = int(np.ceil(n_networks / ncols))
-
-        fig, axs = plt.subplots(nrows, ncols, figsize=(12, 10), sharey=True)
-        axs = axs.ravel()
-
-        for idx in range(n_networks):
-            ax = axs[idx]
-            counts_loop = cat_counts[idx]   # shape (3,)
-            bars = ax.bar(layers, counts_loop, width=0.6)
-            ax.set_title(tick_labels[idx], fontsize=10)
-            ax.set_xticks(layers)
-            ax.set_xticklabels(layer_names, rotation=0)
-            # annotate
-            for bar in bars:
-                h = bar.get_height()
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    h,
-                    f"{h}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8
-                )
-
-        # remove empty subplots
-        for j in range(n_networks, nrows * ncols):
-            fig.delaxes(axs[j])
-
-        fig.supylabel("Outlier Count")
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.95)
-        plt.suptitle("Outlier Counts per RSN across Layers", fontsize=14)
-
-        if adjustSize:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_Plot2_First{limit}_Last{end_num}.png", bbox_inches="tight")
-        else:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsBelongingToEachRSN_Plot2.png", bbox_inches="tight")
-        plt.close()
-
-
-        ## Plotting the combinations of networks
-        num_layers, num_samples = counts.shape[1], counts.shape[2]
-
-        layer_counters = []
-        for layer in range(num_layers):
-            labels = []
-            for sample in range(num_samples):
-                present = [
-                    tick_labels[k]
-                    for k in range(len(tick_labels))
-                    if counts[k, layer, sample] > 1
-                ]
-                label = "+".join(present) if present else "None"
-                labels.append(label)
-            layer_counters.append(Counter(labels))
-        
-        if excludeNone:
-            all_combos = sorted(
-                set().union(*(c.keys() for c in layer_counters)) 
-                - {"None"}
-                )
-        else:
-            all_combos = sorted(set().union(*(c.keys() for c in layer_counters)))
-
-        freqs = np.zeros((num_layers, len(all_combos)), dtype=int)
-        for i, ctr in enumerate(layer_counters):
-            for j, combo in enumerate(all_combos):
-                freqs[i, j] = ctr.get(combo, 0)
-
-        fig, axs = plt.subplots(num_layers, 1, figsize=(12, 8), sharex=True, sharey=True)
-        for layer in range(num_layers):
-            axs[layer].bar(np.arange(len(all_combos)), freqs[layer])
-            axs[layer].set_title(f'Layer {layer+1}')
-            axs[layer].set_ylabel('Frequency')
-
-        # only bottom subplot gets the x‐labels
-        axs[-1].set_xticks(np.arange(len(all_combos)))
-        axs[-1].set_xticklabels(all_combos, rotation=90)
-        axs[-1].set_xlabel('Network Combination Label')
-
-        plt.tight_layout()
-        if adjustSize:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsComboRSN_First{limit}_Last{end_num}.png", bbox_inches="tight")
-        else:
-            plt.savefig(f"{self.data_dir}/{name}/EigvecsComboRSN.png", bbox_inches="tight")
         plt.close()
 
 
