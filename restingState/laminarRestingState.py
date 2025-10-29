@@ -614,21 +614,40 @@ class LaminarRestingState:
                                         y_label="Emb2",
                                         fname=None,
                                         network_cmap="tab20",
-                                        dot_size=12,
+                                        dot_size=40,
                                         # NEW:
                                         atlas='schaefer',               # 'schaefer' (7-net) or 'custom'
-                                        schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
-                                        schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
-                                        ):        
+                                        schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+                                        schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+                                        # --- marginal histogram controls ---
+                                        show_marginal_hists=True,
+                                        hist_bins=30,
+                                        hist_size=0.1,   # fraction of figure for each marginal axis
+                                        hist_pad=0.02,   # gap between scatter and hist axes
+                                        hist_alpha=0.6,  # opacity for bars
+                                        # --- NEW regression uncertainty controls ---
+                                        show_ci_band=True,
+                                        ci_level=0.95,                 # e.g., 0.95 for 95% CI
+                                        band_kind="confidence",        # 'confidence' or 'prediction'
+                                        ci_band_alpha=0.2,             # shading opacity
+                                        return_stats=False):
         """
         eigvecs : (N×d) or (3N×d) array.
                 If 3N, rows ordered as [Deep; Middle; Superficial] blocks of size N.
         When atlas='schaefer', parcels are assumed ordered [LH parcels..., RH parcels...]
         with each hemi ordered by **sorted label keys** from the .label.gii files.
+
+        Also plots marginal histograms of X and Y when show_marginal_hists=True.
+
+        NEW:
+        - Computes OLS line of best fit and uncertainty:
+            * slope/intercept ± SE and 95% CI
+            * Optional shaded 95% band along the line ('confidence' for mean response, or 'prediction' for new obs)
+        - Optionally returns a dict of regression stats when return_stats=True.
         """
         import os, numpy as np, matplotlib.pyplot as plt
         from matplotlib.lines import Line2D
-        from scipy.stats import pearsonr
+        from scipy.stats import pearsonr, t as t_dist
         import nibabel as nib
 
         # ---------------- helpers ----------------
@@ -669,12 +688,10 @@ class LaminarRestingState:
             networks0 = np.asarray(networks0, dtype=int)
             N = networks0.size
 
-            # default 7-network labels (if not provided)
             if network_labels is None:
                 network_labels = ['Visual', 'Somatomotor', 'Dorsal Attn',
                                 'Ventral/Salience', 'Limbic', 'Control', 'Default']
         else:
-            # Fallback to your existing text file (expects length N and values 1..K)
             cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
             networks0 = cats0 - 1
             N = networks0.size
@@ -716,30 +733,32 @@ class LaminarRestingState:
             shapes = ['o']
             if layer_labels is None: layer_labels = ["AcrossLayers"]
 
-
-
         # ---------------- colours ----------------
-        # Build a light→dark palette in the order:
-        # Somatomotor, Visual, Ventral/Salience, Dorsal Attn, Default, Control, Limbic
-        # (_schaefer7_from_name gives indices: 0=Visual,1=Somatomotor,2=DorsAttn,3=Ventral/Sal,
-        #  4=Limbic, 5=Control, 6=Default)
-
-        # You can change 'Blues' to any sequential cmap you like: 'Greys', 'Purples', 'cividis', etc.
-        seq_cmap = plt.get_cmap('tab20')
-
-        # sample 7 evenly spaced shades (avoid extremes for visibility)
+        import matplotlib
+        seq_cmap = matplotlib.cm.get_cmap('tab20')
         shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
-
-        # desired light→dark order mapped to those indices
         order_idx = [1, 0, 3, 2, 6, 5, 4]   # Somato, Visual, Vent/Sal, DorsAttn, Default, Control, Limbic
-
-        # fill the color for each network index (0..6) so legend & plotting stay in-sync
         net_colours = [None] * 7
         for rank, net_idx in enumerate(order_idx):
             net_colours[net_idx] = shades[rank]
 
+        # ---------------- figure + axes (scatter + optional marginals) ----------------
+        if show_marginal_hists:
+            fig = plt.figure(figsize=(7.5, 7.5))
+            left, bottom = 0.10, 0.10
+            width, height = 0.64, 0.64
+            rect_scatter = [left, bottom, width, height]
+            rect_histx = [left, bottom + height + hist_pad, width, hist_size]
+            rect_histy = [left + width + hist_pad, bottom, hist_size, height]
+
+            ax = fig.add_axes(rect_scatter)
+            ax_histx = fig.add_axes(rect_histx, sharex=ax)
+            ax_histy = fig.add_axes(rect_histy, sharey=ax)
+        else:
+            fig, ax = plt.subplots(figsize=(7, 7))
+            ax_histx, ax_histy = None, None
+
         # ---------------- scatter ----------------
-        fig, ax = plt.subplots(figsize=(7, 7))
         for lyr in np.unique(layers):
             for net in np.unique(nets):
                 m = (layers == lyr) & (nets == net)
@@ -750,25 +769,79 @@ class LaminarRestingState:
                         facecolor=net_colours[int(net)],
                         edgecolor='k', linewidths=0.25, alpha=0.8)
 
-        # ---------------- global correlation & regression ----------------
-        r, p = pearsonr(eigvecs[:, x_dim], eigvecs[:, y_dim])
-        xs = np.linspace(*ax.get_xlim(), 200)
-        slope, intercept = np.polyfit(eigvecs[:, x_dim], eigvecs[:, y_dim], 1)
-        ax.plot(xs, slope * xs + intercept, color='k', ls='--', lw=1)
+        # ---------------- global correlation & regression with uncertainty ----------------
+        x = eigvecs[:, x_dim].astype(float)
+        y = eigvecs[:, y_dim].astype(float)
+        n = x.size
+        if n < 3:
+            raise ValueError("Need at least 3 points for regression uncertainty.")
 
-        txt = f"r = {r:.3f}\np = {p:.3g}"
+        # Pearson r and two-sided p
+        r, p = pearsonr(x, y)
+
+        # OLS fit (equivalent to np.polyfit for deg=1)
+        slope, intercept = np.polyfit(x, y, 1)
+        yhat = slope * x + intercept
+        resid = y - yhat
+
+        # Residual standard error (sigma-hat), Sxx, and t critical value
+        x_bar = x.mean()
+        Sxx = np.sum((x - x_bar) ** 2)
+        if Sxx <= 0:
+            raise ValueError("All x-values are identical; cannot fit a line.")
+        df = n - 2
+        sigma_hat = np.sqrt(np.sum(resid ** 2) / df)
+        tcrit = t_dist.ppf(1 - (1 - ci_level) / 2, df)
+
+        # Standard errors and CIs for slope/intercept
+        slope_se = sigma_hat / np.sqrt(Sxx)
+        intercept_se = sigma_hat * np.sqrt(1/n + (x_bar**2) / Sxx)
+        slope_ci = (slope - tcrit * slope_se, slope + tcrit * slope_se)
+        intercept_ci = (intercept - tcrit * intercept_se, intercept + tcrit * intercept_se)
+
+        # Fix axes range before drawing line/bands (your plots are normalized 0..1)
+        ax.set_xlabel(x_label); ax.set_ylabel(y_label)
+        ax.set_title("Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+
+        # Best-fit line
+        xs = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 200)
+        line_y = slope * xs + intercept
+        ax.plot(xs, line_y, color='k', ls='--', lw=1, zorder=5)
+
+        # Confidence or prediction band
+        if show_ci_band:
+            # SE of mean response vs prediction at each xs
+            if band_kind.lower().startswith('pred'):
+                mult = 1.0  # adds the "+1" under the sqrt below
+            else:
+                mult = 0.0
+            se_line = sigma_hat * np.sqrt(mult + (1/n) + ((xs - x_bar) ** 2) / Sxx)
+            upper = line_y + tcrit * se_line
+            lower = line_y - tcrit * se_line
+            ax.fill_between(xs, lower, upper, alpha=ci_band_alpha, edgecolor='none', facecolor='gray', zorder=4)
+
+        # Regression summary textbox
+        txt = (
+            f"r = {r:.3f}\np = {p:.3g}\n"
+            f"slope = {slope:.3f} [{slope_ci[0]:.3f}, {slope_ci[1]:.3f}]\n"
+            f"intercept = {intercept:.3f} [{intercept_ci[0]:.3f}, {intercept_ci[1]:.3f}]"
+        )
         bbox_props = dict(boxstyle="round,pad=0.25", fc="w", ec="k", lw=0.4)
         ax.text(-0.05, 1.06, txt, ha="right", va="bottom",
                 transform=ax.transAxes, fontsize=5, bbox=bbox_props)
 
-        # labels / square axis
-        ax.set_xlabel(x_label); ax.set_ylabel(y_label)
-        ax.set_title("Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
-        ax.set_aspect('equal', adjustable='box')
+        # ---------------- marginal histograms ----------------
+        if show_marginal_hists:
+            ax_histx.hist(x, bins=hist_bins, range=(0, 1), edgecolor='k', alpha=hist_alpha)
+            ax_histx.tick_params(axis='x', labelbottom=False); ax_histx.tick_params(axis='y', labelleft=False)
+            for spine in ('right', 'top'): ax_histx.spines[spine].set_visible(False)
 
-        # >>> FIXED AXES IN [0, 1] <<<
-        ax.set_xlim(0.0, 1.0)
-        ax.set_ylim(0.0, 1.0)
+            ax_histy.hist(y, bins=hist_bins, range=(0, 1), orientation='horizontal', edgecolor='k', alpha=hist_alpha)
+            ax_histy.tick_params(axis='y', labelleft=False); ax_histy.tick_params(axis='x', labelbottom=False)
+            for spine in ('right', 'top'): ax_histy.spines[spine].set_visible(False)
 
         # ---------------- legends ----------------
         net_handles = [Line2D([0],[0], marker='o', color='w',
@@ -790,10 +863,27 @@ class LaminarRestingState:
         if fname is None:
             fname = f"ScatterCorr_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}.png"
         fig.tight_layout()
-        fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
+        outpath = os.path.join(outdir, fname)
+        fig.savefig(outpath, dpi=500, bbox_inches="tight")
         plt.close(fig)
-        print("Saved:", os.path.join(outdir, fname))
+        print("Saved:", outpath)
 
+        if return_stats:
+            return {
+                "n": int(n),
+                "df": int(df),
+                "pearson_r": float(r),
+                "pearson_p": float(p),
+                "slope": float(slope),
+                "intercept": float(intercept),
+                "sigma_hat": float(sigma_hat),
+                "slope_se": float(slope_se),
+                "intercept_se": float(intercept_se),
+                "slope_ci": tuple(map(float, slope_ci)),
+                "intercept_ci": tuple(map(float, intercept_ci)),
+                "ci_level": float(ci_level),
+                "band_kind": band_kind.lower(),
+            }
 
     def plotScatter3DWithPlane(self,
                             X,

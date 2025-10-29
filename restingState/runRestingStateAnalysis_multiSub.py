@@ -22,7 +22,8 @@ gradients_flag = True
 # kernel = "normalized_angle"
 kernel = None
 largeGap = False
-n_components = 15
+n_components = 20
+n_perm = 5000
 
 BASE = Path('/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations')
 SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22] 
@@ -41,13 +42,12 @@ data_dirs = [root / f'sub-LAM{s:03d}' for s in SUBJECTS]
 output_dir = root
 
 subs = len(data_dirs)
-print(subs)
 os.makedirs(output_dir, exist_ok=True)
 
-analysis = "WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0"
+analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k"
 
 
-if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
+if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
 
     def subtractAverage(adjMatrix):
         avg_matrix = np.nanmean(adjMatrix, axis=2)
@@ -199,7 +199,7 @@ if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
                                                       x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_uncorrected.svg")
         
         # spin_results, spin_rsn_names = stats.spin_anova_layers(D_Deep, D_Mid, D_Sup,
-        #                                     n_perm=500, random_state=1)
+        #                                     n_perm=n_perm, random_state=1)
         # for lyr, r in spin_results.items():
         #     print(f"\n{lyr}: F={r['F_obs']:.3f}, p_spin={r['p_spin']:.4g}")
         #     for k, (m, n) in enumerate(zip(r['net_means'], r['net_ns'])):
@@ -208,17 +208,37 @@ if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
         # stats.save_spin_results_csv(spin_results, spin_rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"spin_anova_layers.csv"))
 
 
-        # res_int = stats.spin_network_layer_interaction(
-        #     D_Deep, D_Mid, D_Sup,
-        #     n_perm=500, random_state=11, batch_size=50  # lower batch_size to save RAM
+        # ---- Layer-wise ANOVAs with SPIN (2–4 maps) ----
+        # layer_res, rsn_names = stats.layerwise_network_anova(
+        #     [D_Deep, D_Mid, D_Sup],                     # or 2 or 4 maps
+        #     layer_names=["Deep","Middle","Superficial"],
+        #     method='spin',                               # or 'msr'
+        #     n_perm=n_perm, random_state=19910113, batch_size=50, spin_unique=False
         # )
-        # print(f"Interaction F(12, {res_int['df2']}) = {res_int['F_int_obs']:.3f},  p_spin = {res_int['p_int_spin']:.4g}")
-        # print("Cell means [RSN x Layer]:\n", res_int["cell_means"])
+        # stats.save_layerwise_results_csv(layer_res, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"spin_anova_layers.csv"))
+
+        # # ---- Interaction (2 or 3 layers) with MSR ----
+        # res_int = stats.network_layer_interaction_general(
+        #     [D_Deep, D_Mid, D_Sup],                            # or [D_deep, D_mid, D_sup]
+        #     layer_names=["Deep","Middle", "Superficial"],
+        #     method='spin',                               # or 'spin'
+        #     n_perm=n_perm, random_state=19910114
+        # )
+        # stats.save_interaction_to_csv(res_int, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"IntraLayers_anova.csv"))
+
+
+        # res_int2 = stats.network_layer_interaction_general(
+        #     [D_inter, D_intra],                            # or [D_deep, D_mid, D_sup]
+        #     layer_names=["D_inter","D_intra"],
+        #     method='spin',                               # or 'spin'
+        #     n_perm=n_perm, random_state=19910115
+        # )
+        # stats.save_interaction_to_csv(res_int2, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"InterIntra_anova.csv"))
+
 
 
         restStateSub.plotNetworkCentroids3D(X=D_Sup[:,np.newaxis], Y=D_Mid[:,np.newaxis], Z=D_Deep[:,np.newaxis], name=os.path.join(analysis,additionalFolder), 
                                                       x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_uncorrected.svg")
-
 
 
         D_Deep = (D_Deep - np.min(D_Deep)) / ((np.max(D_Deep) - np.min(D_Deep)))
@@ -285,8 +305,25 @@ if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_intra_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_IntraLamThick.svg")
 
+        # res_intra_bigbrain = stats.network_layer_interaction_general(
+        #     [D_intra, G_bigBrain], 
+        #     layer_names=["IntraRegional","BigBrainENIGMA"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910116
+        # )
+        # stats.save_interaction_to_csv(res_intra_bigbrain, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"IntraBigBrain_anova.csv"))
+
+
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_InterLamThick.svg")
+
+        # res_inter_bigbrain = stats.network_layer_interaction_general(
+        #     [D_inter, G_bigBrain], 
+        #     layer_names=["InterRegional","BigBrainENIGMA"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910117
+        # )
+        # stats.save_interaction_to_csv(res_inter_bigbrain, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"InterBigBrain_anova.csv"))
 
 
 
@@ -309,6 +346,15 @@ if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="Intraparcel laminar difference: middle", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_MidLamThick.svg")
+
+        # res_intraMid_bigbrainG = stats.network_layer_interaction_general(
+        #     [D_Mid, G_SC_standard], 
+        #     layer_names=["IntraMid","BigBrainSC"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910120
+        # )
+        # stats.save_interaction_to_csv(res_intraMid_bigbrainG, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"IntraMidBigBrainG_anova.csv"))
+
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_SupLamThick.svg")
@@ -356,10 +402,42 @@ if analysis=="WithinLayer_gradients_kernelNone_9Subs_15Components_32k_group0":
         # Grad
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([rDCM_grad[:,np.newaxis], D_Deep[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="rDCM grad", y_label ="Deep intraparcel difference", fname="Scatter_rDCMgrad_Deep.svg")
+        
+        
+        # res_deep_rDCMgrad = stats.network_layer_interaction_general(
+        #     [D_Deep, rDCM_grad], 
+        #     layer_names=["IntraDeep","rDCM"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910118
+        # )
+        # stats.save_interaction_to_csv(res_deep_rDCMgrad, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"Ddeep_rDCMgrad_anova.csv"))
+        
+        
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([rDCM_grad[:,np.newaxis], D_Mid[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="rDCM grad", y_label ="Middle intraparcel difference", fname="Scatter_rDCMgrad_Mid.svg")
+
+
+
+        # res_mid_rDCMgrad = stats.network_layer_interaction_general(
+        #     [D_Mid, rDCM_grad], 
+        #     layer_names=["IntraMid","rDCM"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910119
+        # )
+        # stats.save_interaction_to_csv(res_mid_rDCMgrad, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"Dmid_rDCMgrad_anova.csv"))
+
+
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([rDCM_grad[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="rDCM grad", y_label ="Superficial intraparcel difference", fname="Scatter_rDCMgrad_Sup.svg")
+
+
+        # res_sup_rDCMgrad = stats.network_layer_interaction_general(
+        #     [D_Sup, rDCM_grad], 
+        #     layer_names=["IntraSup","rDCM"],
+        #     method='spin',
+        #     n_perm=n_perm, random_state=19910121
+        # )
+        # stats.save_interaction_to_csv(res_sup_rDCMgrad, rsn_names, out_csv=os.path.join(output_dir, analysis, additionalFolder,"Dsup_rDCMgrad_anova.csv"))
 
 
         df, fig_path, csv_path = restStateSub.run_ff_fb_models(
