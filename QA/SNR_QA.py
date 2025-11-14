@@ -203,12 +203,15 @@ for subj in subjects:
         bold_path = os.path.join(
             FUNC_BASE,
             subj,
-            f"merged_residuals_{runNum}.nii"
+            f"{subj}_task-rest_bold_NORDIC_mc.nii"
         )
         if not os.path.exists(bold_path):
-            print(f"[WARN] Missing BOLD {bold_path}, skipping run.")
-            continue
-
+            bold_path = os.path.join(
+                FUNC_BASE,
+                subj,
+                f"{subj}_task-rest_bold_mc.nii"
+            )
+        
         bold_img = nib.load(bold_path)
         bold_data = bold_img.get_fdata()  # 4D
 

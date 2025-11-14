@@ -20,7 +20,8 @@ def run_gradient_analysis(conn_matrix, n_components=10, kernel="cosine", approac
     gm = GradientMaps(kernel=kernel, approach=approach, n_components=n_components, random_state=random_state)
     # gm.fit(conn_matrix)             # BrainSpace builds the affinity & diffusion map internally
     gm.fit(conn_matrix, sparsity=sparsity)             # BrainSpace builds the affinity & diffusion map internally
-    return gm.gradients_           # shape: (1080, n_components)
+
+    return gm.gradients_, gm.lambdas_           # shape: (1080, n_components)
     
 
 def run_gradient_analysis_affinity(conn_matrix, n_components=10, kernel="cosine", approach="dm", random_state=0, sparsity=0.9):
@@ -105,7 +106,7 @@ def inter_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
     mpl.rcParams['svg.fonttype'] = 'none'
     mpl.rcParams['text.usetex'] = False
     plt.figure(figsize=(6, 6))
-    plt.imshow(P, cmap="cividis")
+    plt.imshow(P, cmap="viridis")
     plt.title("ConcatMatrix P - inter areal dis")
     plt.savefig(f"{outputDir}/ConcatMatrixP_inter.svg", bbox_inches="tight", format="svg")
     plt.close()
@@ -131,13 +132,13 @@ def inter_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
 
     # Plot overall distance matrix and mean-distance column
     plt.figure(figsize=(6, 6))
-    plt.imshow(D, cmap="cividis")
+    plt.imshow(D, cmap="viridis")
     plt.title("Distance matrix - inter areal dis")
     plt.savefig(f"{outputDir}/Matrix_interArealDis.svg", bbox_inches="tight", format="svg")
     plt.close()
 
     plt.figure(figsize=(10, 10))
-    plt.imshow(distanceSum[:, np.newaxis], cmap="cividis")
+    plt.imshow(distanceSum[:, np.newaxis], cmap="viridis")
     plt.title("Distance sum - inter areal dis")
     plt.savefig(f"{outputDir}/Matrix_interArealDisSum.svg", bbox_inches="tight", format="svg")
     plt.close()
@@ -150,7 +151,7 @@ def plotMatrix(M, outputDir, name):
     mpl.rcParams['text.usetex'] = False     # avoid TeX (which becomes outlines)
 
     plt.figure(figsize=(6, 6))
-    plt.imshow(M, cmap="cividis")
+    plt.imshow(M, cmap="viridis")
     plt.title("Adjacency matrix")
     plt.savefig(f"{outputDir}/{name}", bbox_inches="tight", format="svg")
     plt.close()
@@ -191,7 +192,7 @@ def intra_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
 
         # Debug/QA plot
         plt.figure(figsize=(6, 6))
-        plt.imshow(Ubar, cmap="cividis")
+        plt.imshow(Ubar, cmap="viridis")
         plt.title("Ubar - intra areal dis")
         plt.savefig(f"{outputDir}/Matrix_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
@@ -205,7 +206,7 @@ def intra_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
 
         # Also save an overview heatmap of per-layer distances (layers x parcels)
         plt.figure(figsize=(8, 6))
-        plt.imshow(D_layers, aspect='auto', cmap="cividis")
+        plt.imshow(D_layers, aspect='auto', cmap="viridis")
         plt.title("Per-layer distances to mean direction (layers × parcels)")
         plt.ylabel("Layer")
         plt.xlabel("Parcel")
@@ -214,7 +215,7 @@ def intra_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
 
         # Save overall column image (backward-compatible filename)
         plt.figure(figsize=(10, 10))
-        plt.imshow(d_intraMean[:, np.newaxis], cmap="cividis")
+        plt.imshow(d_intraMean[:, np.newaxis], cmap="viridis")
         plt.title("D_intraMean - intra areal dis")
         plt.savefig(f"{outputDir}/Matrix_mean_intraArealDis.svg", bbox_inches="tight", format="svg")
         plt.close()
@@ -228,7 +229,7 @@ def intra_areal_dissimilarity(G_all, outputDir, N=360, zscore_within_layer=False
         # Optional: save the three selected layers with familiar names
         for name, vec in [("sup", d_superficial), ("mid", d_middle), ("deep", d_deep)]:
             plt.figure(figsize=(10, 10))
-            plt.imshow(vec[:, np.newaxis], cmap="cividis")
+            plt.imshow(vec[:, np.newaxis], cmap="viridis")
             plt.title(f"D_{name} - intra areal dis")
             plt.savefig(f"{outputDir}/Matrix_{name}_intraArealDis.svg", bbox_inches="tight", format="svg")
             plt.close()
@@ -261,7 +262,7 @@ def plotFlatMap(
     outname,
     inputdir_1="",
     inputdir_2="/home/degutis/repos/HumanCorticalParcellations",
-    cmap="cividis",
+    cmap="viridis",
     HCP=False,
     vmin=None, vmax=None,
     symmetric=False,         # center color range at 0 if True

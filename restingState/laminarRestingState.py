@@ -736,12 +736,27 @@ class LaminarRestingState:
         # ---------------- colours ----------------
         import matplotlib
         seq_cmap = matplotlib.cm.get_cmap('tab20')
-        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]   # Somato, Visual, Vent/Sal, DorsAttn, Default, Control, Limbic
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
 
+        # how many networks actually appear in the data
+        n_nets = int(nets.max()) + 1
+
+        if atlas.lower() == 'schaefer':
+            # keep your special Schaefer-7 ordering if you like
+            if n_nets != 7:
+                raise ValueError(f"Expected 7 networks for Schaefer-7, found {n_nets}")
+
+            shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, n_nets)]
+            order_idx = [1, 0, 3, 2, 6, 5, 4]   # your custom order
+            net_colours = [None] * n_nets
+            for rank, net_idx in enumerate(order_idx):
+                net_colours[net_idx] = shades[rank]
+        else:
+            # generic mapping: one colour per network
+            if n_nets < 1:
+                raise ValueError("No networks found in 'nets'.")
+            net_colours = [
+                seq_cmap(i / max(n_nets - 1, 1)) for i in range(n_nets)
+            ]
         # ---------------- figure + axes (scatter + optional marginals) ----------------
         if show_marginal_hists:
             fig = plt.figure(figsize=(7.5, 7.5))
@@ -843,11 +858,27 @@ class LaminarRestingState:
             ax_histy.tick_params(axis='y', labelleft=False); ax_histy.tick_params(axis='x', labelbottom=False)
             for spine in ('right', 'top'): ax_histy.spines[spine].set_visible(False)
 
+        # ensure we have at least one label per network
+        if len(network_labels) < n_nets:
+            network_labels = list(network_labels) + [
+                f"Net{i}" for i in range(len(network_labels), n_nets)
+            ]
+
         # ---------------- legends ----------------
-        net_handles = [Line2D([0],[0], marker='o', color='w',
-                            markerfacecolor=net_colours[i], markeredgecolor='k',
-                            markersize=8, label=network_labels[i])
-                    for i in np.unique(nets)]
+        net_handles = [
+            Line2D(
+                [0], [0],
+                marker='o',
+                color='w',
+                markerfacecolor=net_colours[int(i)],
+                markeredgecolor='k',
+                markersize=8,
+                label=network_labels[int(i)],
+            )
+            for i in np.unique(nets)
+        ]
+
+                    
         ax.legend(handles=net_handles, title="RSN",
                 bbox_to_anchor=(1.32, 1), loc='upper left')
 
@@ -1261,25 +1292,29 @@ class LaminarRestingState:
             if layer_labels is None: layer_labels = ["AcrossLayers"]
 
         # ---------------- colours ----------------
-        # Build a light→dark palette in the order:
-        # Somatomotor, Visual, Ventral/Salience, Dorsal Attn, Default, Control, Limbic
-        # (_schaefer7_from_name gives indices: 0=Visual,1=Somatomotor,2=DorsAttn,3=Ventral/Sal,
-        #  4=Limbic, 5=Control, 6=Default)
+        import matplotlib
+        seq_cmap = matplotlib.cm.get_cmap('tab20')
 
-        # You can change 'Blues' to any sequential cmap you like: 'Greys', 'Purples', 'cividis', etc.
-        seq_cmap = plt.get_cmap('tab20')
+        # how many networks actually appear in the data
+        n_nets = int(nets.max()) + 1
 
-        # sample 7 evenly spaced shades (avoid extremes for visibility)
-        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
+        if atlas.lower() == 'schaefer':
+            # keep your special Schaefer-7 ordering if you like
+            if n_nets != 7:
+                raise ValueError(f"Expected 7 networks for Schaefer-7, found {n_nets}")
 
-        # desired light→dark order mapped to those indices
-        order_idx = [1, 0, 3, 2, 6, 5, 4]   # Somato, Visual, Vent/Sal, DorsAttn, Default, Control, Limbic
-
-        # fill the color for each network index (0..6) so legend & plotting stay in-sync
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
-
+            shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, n_nets)]
+            order_idx = [1, 0, 3, 2, 6, 5, 4]   # your custom order
+            net_colours = [None] * n_nets
+            for rank, net_idx in enumerate(order_idx):
+                net_colours[net_idx] = shades[rank]
+        else:
+            # generic mapping: one colour per network
+            if n_nets < 1:
+                raise ValueError("No networks found in 'nets'.")
+            net_colours = [
+                seq_cmap(i / max(n_nets - 1, 1)) for i in range(n_nets)
+            ]
         # ---------------- compute centroids ----------------
         uniq_layers = np.unique(layers)
         uniq_nets   = np.unique(nets)
@@ -2205,7 +2240,7 @@ class LaminarRestingState:
         titles=["Deep", "Middle", "Superficial", "Average"],
         folder_name="eigenvector_layers",
         # NEW:
-        atlas="schaefer",                             # "mmp" (Glasser) or "schaefer"
+        atlas="mmp",                             # "mmp" (Glasser) or "schaefer"
         schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
         schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
     ):
@@ -2386,15 +2421,17 @@ class LaminarRestingState:
         # Compute cumulative explained variance (normalized to 100%)
         eigvals_cumsum = np.cumsum(eigvals_sorted) / np.sum(eigvals_sorted) * 100
 
+        num_components = np.size(eigvals)
+
         fig, ax1 = plt.subplots(figsize=(8, 5))
-        ax1.plot(range(1, self.num_components + 1), eigvals_sorted, marker='o', linestyle='-', color='b', label="Eigenvalues")
+        ax1.plot(range(1, num_components + 1), eigvals_sorted, marker='o', linestyle='-', color='b', label="Eigenvalues")
         ax1.set_xlabel('Component Number')
         ax1.set_ylabel('Eigenvalue', color='b')
         ax1.tick_params(axis='y', labelcolor='b')
 
         # Create second y-axis for cumulative percentage
         ax2 = ax1.twinx()
-        ax2.plot(range(1, self.num_components + 1), eigvals_cumsum, marker='s', linestyle='--', color='r', label="Cumulative Sum")
+        ax2.plot(range(1, num_components + 1), eigvals_cumsum, marker='s', linestyle='--', color='r', label="Cumulative Sum")
         ax2.set_ylabel('Cumulative Sum (%)', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
 

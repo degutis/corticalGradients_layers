@@ -10,7 +10,7 @@ import stats
 
 
 
-N = 400
+N = 360
 setThresh = 0
 thresholdRange = np.arange(88, 90)
 num_layers=3
@@ -22,17 +22,19 @@ gradients_flag = True
 # kernel = "normalized_angle"
 kernel = None
 largeGap = False
+HCP=True
 n_components = 20
 n_perm = 5000
 
 BASE = Path('/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations')
-SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22] 
+SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19, 21, 22] 
 # SUBJECTS = [1, 4, 10, 13, 14, 15, 17, 18, 21] # group 0
 # SUBJECTS = [2, 3, 5, 6, 7, 8, 9, 11, 12, 16, 19, 22] # group 1
 # BASE = Path('/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/correlations')
 # SUBJECTS = [1, 2, 4] 
 
-gap_dir = f'{"large" if largeGap else "small"}Gap_Schaefer'
+# gap_dir = f'{"large" if largeGap else "small"}Gap_Schaefer'
+gap_dir = f'{"large" if largeGap else "small"}Gap_Glasser'
 # gap_dir = "eightLayers_Schaefer"
 root = BASE / gap_dir
 
@@ -44,10 +46,10 @@ output_dir = root
 subs = len(data_dirs)
 os.makedirs(output_dir, exist_ok=True)
 
-analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k"
+analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs"
 
 
-if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
+if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs":
 
     def subtractAverage(adjMatrix):
         avg_matrix = np.nanmean(adjMatrix, axis=2)
@@ -126,7 +128,7 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
 
         for iSub, data_dir in enumerate(data_dirs):
             restStateSub = lrs.LaminarRestingState(data_dir, N, setThresh, num_layers = num_layers, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")
-            # restStateSub.plotReliability(TR=3.3) # Run this once per subject
+            # restStateSub.plotReliability(TR=3.3) # Run this once per fHC
             _, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
 
             if subtractAverage_true:
@@ -154,11 +156,13 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
         rDCM_aff = rDCM_matrix["results"].Strength_Afferent_wholeBrain   
 
         laman.plotMatrix(M, os.path.join(output_dir, analysis), "AdjMatrix.svg")
-
+        print(np.size(M))
         restStateSub = lrs.LaminarRestingState(output_dir, N, setThresh, atlas_dir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/sub-LAM001/HCP-MMP1_in-func.nii")
         print(M.shape)
-        G = laman.run_gradient_analysis(M, n_components=n_components, kernel=kernel, random_state=13011991)
+        G, eig = laman.run_gradient_analysis(M, n_components=n_components, kernel=kernel, random_state=13011991)
         # G, affinity_matrix = laman.run_gradient_analysis_affinity(M, n_components=n_components, random_state=13011991)
+
+        restStateSub.plotScree(eig, analysis)
 
         mins = np.nanmin(G, axis=0, keepdims=True)
         maxs = np.nanmax(G, axis=0, keepdims=True)
@@ -184,19 +188,19 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
         restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Mid[:,np.newaxis], "D_Mid_15_zscore", os.path.join(analysis, additionalFolder),vmin=0,vmax=0.5)        
         restStateSub.__plot_on_mmhcp_surface_multipleLayers__(D_Sup[:,np.newaxis], "D_Sup_15_zscore", os.path.join(analysis, additionalFolder),vmin=0,vmax=0.5)       
 
-        laman.plotFlatMap(D_inter, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap.png",)
-        laman.plotFlatMap(D_intra, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraFlatMap.png", vmin=0,vmax=0.5)
+        laman.plotFlatMap(D_inter, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap.png",HCP=HCP)
+        laman.plotFlatMap(D_intra, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraFlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
 
-        laman.plotFlatMap(D_inter_deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_deep.png")
-        laman.plotFlatMap(D_inter_mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_mid.png")
-        laman.plotFlatMap(D_inter_sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_sup.png")
+        # laman.plotFlatMap(D_inter_deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_deep.png")
+        # laman.plotFlatMap(D_inter_mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_mid.png")
+        # laman.plotFlatMap(D_inter_sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_interFlatMap_sup.png")
 
-        laman.plotFlatMap(D_Deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraDeepFlatMap.png", vmin=0,vmax=0.5)
-        laman.plotFlatMap(D_Mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraMidFlatMap.png", vmin=0,vmax=0.5)
-        laman.plotFlatMap(D_Sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraSupFlatMap.png", vmin=0,vmax=0.5)
+        laman.plotFlatMap(D_Deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraDeepFlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
+        laman.plotFlatMap(D_Mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraMidFlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
+        laman.plotFlatMap(D_Sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_intraSupFlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
 
         restStateSub.plotScatter3DWithPlane(X=D_Sup[:,np.newaxis], Y=D_Mid[:,np.newaxis], Z=D_Deep[:,np.newaxis], name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers", 
-                                                      x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_uncorrected.svg")
+                                                      x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_uncorrected.svg", atlas='HCP')
         
         # spin_results, spin_rsn_names = stats.spin_anova_layers(D_Deep, D_Mid, D_Sup,
         #                                     n_perm=n_perm, random_state=1)
@@ -238,7 +242,7 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
 
 
         restStateSub.plotNetworkCentroids3D(X=D_Sup[:,np.newaxis], Y=D_Mid[:,np.newaxis], Z=D_Deep[:,np.newaxis], name=os.path.join(analysis,additionalFolder), 
-                                                      x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_uncorrected.svg")
+                                                      x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_uncorrected.svg", atlas='HCP')
 
 
         D_Deep = (D_Deep - np.min(D_Deep)) / ((np.max(D_Deep) - np.min(D_Deep)))
@@ -261,24 +265,24 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
         ## Inter intra
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg")
+                                                      x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg", atlas="HCP")
 
         restStateSub.plotScatterCentroids(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                            x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra_centroid.svg")
+                                            x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra_centroid.svg", atlas="HCP")
 
         ## Intra of each layer compared to one another
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Mid[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: deep", y_label ="Intraparcel laminar difference: middle", fname="Scatter_DeepMid.svg")
+                                                      x_label="Intraparcel laminar difference: deep", y_label ="Intraparcel laminar difference: middle", fname="Scatter_DeepMid.svg", atlas="HCP")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Deep[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: deep", y_label ="Intraparcel laminar difference: superficial", fname="Scatter_DeepSup.svg")
+                                                      x_label="Intraparcel laminar difference: deep", y_label ="Intraparcel laminar difference: superficial", fname="Scatter_DeepSup.svg", atlas="HCP")
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Mid[:,np.newaxis], D_Sup[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
-                                                      x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: superficial", fname="Scatter_MidSup.svg")
+                                                      x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: superficial", fname="Scatter_MidSup.svg", atlas="HCP")
 
         restStateSub.plotScatter3DWithPlane(X=D_Deep[:,np.newaxis], Y=D_Mid[:,np.newaxis], Z=D_Sup[:,np.newaxis], name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers", 
-                                                      x_label="Deep", y_label ="Middle", z_label="Superficial", fname="Scatter_DeepMidSup_corrected.svg")
+                                                      x_label="Deep", y_label ="Middle", z_label="Superficial", fname="Scatter_DeepMidSup_corrected.svg", atlas="HCP")
 
 
 
@@ -358,6 +362,21 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k":
 
         restStateSub.plotScatterWithGlobalCorrelation(np.concatenate([D_Sup[:,np.newaxis], G_SC_standard[:,np.newaxis]], axis=1), name=os.path.join(analysis,additionalFolder), layer_labels="AcrossLayers",eigvecs_to_plot=(0, 1), 
                                                       x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="Scatter_G1BB_SupLamThick.svg")
+
+
+        ## SNR
+
+        additionalFolder = "SNR"
+        os.makedirs(os.path.join(output_dir,analysis, additionalFolder), exist_ok=True)
+        SNR_deep = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/tSNR_layers/group_layer1_tSNR_byParcel.npy")
+        SNR_mid = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/tSNR_layers/group_layer2_tSNR_byParcel.npy")
+        SNR_sup = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/tSNR_layers/group_layer3_tSNR_byParcel.npy")
+
+        laman.plotFlatMap(SNR_deep, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_layer1.png",)
+        laman.plotFlatMap(SNR_mid, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_layer2.png",)
+        laman.plotFlatMap(SNR_sup, os.path.join(output_dir, analysis, additionalFolder), "Flatmap_layer3.png",)
+
+
 
 
         additionalFolder = "DCM"

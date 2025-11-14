@@ -11,19 +11,19 @@ def averageVoxels_parcels_with_fs(
     layer_01=True
     ):
     
-    # BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
-    # layer_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
-    # atlas_path_right=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/schaefer_R_in-func.nii"
-    # atlas_path_left=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/schaefer_L_in-func.nii"
+    BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
+    layer_path=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
+    atlas_path_right=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/schaefer_R_in-func.nii"
+    atlas_path_left=f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/{subject}/schaefer_L_in-func.nii"
 
-    # output_path = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/{analysis_type}/{subject}/"
+    output_path = f"/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/{analysis_type}/{subject}/"
 
-    BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
-    layer_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
-    atlas_path_right=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/schaefer_R_in-func.nii"
-    atlas_path_left=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/schaefer_L_in-func.nii"
+    # BOLD_data_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/func/{subject}/merged_residuals_{runNum}.nii"
+    # layer_path=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/ln_depths_equivol.nii"
+    # atlas_path_right=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/schaefer_R_in-func.nii"
+    # atlas_path_left=f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/{subject}/schaefer_L_in-func.nii"
 
-    output_path = f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/correlations/{analysis_type}/{subject}/"
+    # output_path = f"/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/correlations/{analysis_type}/{subject}/"
 
 
 
@@ -38,6 +38,8 @@ def averageVoxels_parcels_with_fs(
     layer_data = layer_img.get_fdata()
     atlas_data_right = atlas_img_right.get_fdata()
     atlas_data_left = atlas_img_left.get_fdata()
+    print(np.shape(atlas_data_right))
+    print(np.shape(atlas_data_left))
 
     bold_data  = bold_img.get_fdata()
     atlas_data = atlas_data_right + atlas_data_left

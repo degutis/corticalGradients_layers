@@ -7,18 +7,18 @@ from numpy.linalg import inv
 
 
 N = 360
-setThresh = 90
+setThresh = 0
 num_layers=3
 binarize_flag = False
 subtractAverage_true = False
 hcplabels = True
 gradients = True
 
-data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM004',
-             '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/sub-LAM011']
+data_dirs = ['/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM001', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM002', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM003', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM004',
+             '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM005', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM006', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM009', '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/sub-LAM011']
 
 subs = len(data_dirs)
-output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap/'
+output_dir = '/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/'
 os.makedirs(output_dir, exist_ok=True)
 
 analysis = "WithinLayer_10_bin0"
@@ -93,7 +93,7 @@ if analysis=="WithinLayer_10_bin0":
 
     if gradients:
         eigvals_within, eigvecs_within = restStateSub.runLaplacianEmbedding(M, analysis, convert_to_binary=False, full=True, vMax=1)
-        gradients = laman.runGradientAnalysis(M)
+        gradients, eig = laman.run_gradient_analysis(M)
         print(gradients.shape)
         restStateSub.eigvecs_to_nifti(gradients, analysis, hcp_atlas=hcplabels)
     
