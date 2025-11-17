@@ -58,7 +58,7 @@ def averageVoxels_parcels_with_fs(
             layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
             layer_binary[(layer_data > 0.7) & (layer_data <  1.0)] = 3
         
-        elif analysis_type == "noGap":
+        elif analysis_type == "noGap_Schaefer":
             layer_binary[(layer_data > 0)   & (layer_data <= 0.4)] = 1
             layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
             layer_binary[(layer_data > 0.6) & (layer_data <  1.0)] = 3
@@ -143,26 +143,28 @@ def averageVoxels_parcels_with_fs(
     print("All done")
 
 
-# averageVoxels_parcels_with_fs("sub-LAM001","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM002","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM003","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM004","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM005","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM006","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM009","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM011","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM010","run1","largeGap_Schaefer")
-averageVoxels_parcels_with_fs("sub-LAM007","run1","smallGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM012","run1","smallGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM013","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM015","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM016","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM017","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM018","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM019","run1","largeGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM021","run1","smallGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM022","run1","smallGap_Schaefer")
-# averageVoxels_parcels_with_fs("sub-LAM014","run1","smallGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM001","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM002","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM003","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM004","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM005","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM006","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM009","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM011","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM010","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM007","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM012","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM013","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM015","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM016","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM017","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM018","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM019","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM007","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM008","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM021","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM022","run1","noGap_Schaefer")
+averageVoxels_parcels_with_fs("sub-LAM014","run1","noGap_Schaefer")
 
 # averageVoxels_parcels_with_fs("sub-01","run1","smallGap_Schaefer")
 # averageVoxels_parcels_with_fs("sub-01","run2","smallGap_Schaefer")

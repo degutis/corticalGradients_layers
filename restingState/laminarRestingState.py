@@ -916,6 +916,8 @@ class LaminarRestingState:
                 "band_kind": band_kind.lower(),
             }
 
+
+
     def plotScatter3DWithPlane(self,
                             X,
                             Y=None,
@@ -939,7 +941,10 @@ class LaminarRestingState:
                             # Atlas options
                             atlas='schaefer',
                             schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"
+                            schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+                            # NEW: marginals
+                            show_marginals=True,
+                            hist_bins=20,
                             ):
         import os
         import numpy as np
@@ -1036,42 +1041,44 @@ class LaminarRestingState:
             if layer_labels is None: layer_labels = ["AcrossLayers"]
 
         # ---------- colors ----------
-        # We want discrete shades going light→dark in the order:
-        # Somato (1), Visual (0), Vent/Sal (3), DorsAttn (2), Default (6), Control (5), Limbic (4)
         if len(network_labels) == 7:
-            # Try to use a sequential cmap (e.g., 'Blues', 'Greys', 'Purples', 'cividis').
-            # If a qualitative cmap like 'tab10' is passed, we still sample it—but it won't be a light→dark ramp.
             try:
                 seq_cmap = plt.get_cmap(network_cmap)
             except Exception:
                 seq_cmap = plt.get_cmap('tab20')
-
-            # 7 evenly spaced shades (avoid extremes for visibility)
-            shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
-
-            order_idx = [1, 0, 3, 2, 6, 5, 4]  # target order
+            shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
+            order_idx = [1, 0, 3, 2, 6, 5, 4]
             net_colours = [None] * 7
             for rank, net_idx in enumerate(order_idx):
                 net_colours[net_idx] = shades[rank]
         else:
-            # Fallback for non-7-network sets: categorical palette
             cmap = plt.get_cmap(network_cmap, len(network_labels))
             net_colours = [cmap(i) for i in range(len(network_labels))]
 
         # ---------- figure / axes ----------
         fig = plt.figure(figsize=(8.8, 8.0))
-        ax = fig.add_subplot(111, projection='3d')
-        # projection choice (helps perceived “squish”)
+
+        if show_marginals:
+            # manual layout: main 3D axis + 3 marginal axes
+            ax = fig.add_axes([0.08, 0.08, 0.6, 0.7], projection='3d')
+            ax_histx = fig.add_axes([0.08, 0.80, 0.6, 0.16])                # top, x distribution
+            ax_histy = fig.add_axes([0.70, 0.08, 0.16, 0.7])                # right, y distribution
+            ax_histz = fig.add_axes([0.70, 0.80, 0.16, 0.16])               # top-right, z distribution
+        else:
+            ax = fig.add_subplot(111, projection='3d')
+            ax_histx = ax_histy = ax_histz = None
+
         try:
             ax.set_proj_type(proj_type)
         except Exception:
-            pass  # older mpl
+            pass
 
         # ---------- scatter ----------
         for lyr in np.unique(layers):
             for net in np.unique(nets):
                 m = (layers == lyr) & (nets == net)
-                if not np.any(m): continue
+                if not np.any(m):
+                    continue
                 ax.scatter(x[m], y[m], z[m],
                         s=dot_size,
                         marker=shapes[int(lyr if mode == "multilayer" else 0)],
@@ -1081,12 +1088,15 @@ class LaminarRestingState:
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.set_zlabel(z_label)
-        ax.set_title("3D Embedding colored by Schaefer-7 RSN" + (" (layers as shapes)" if mode == "multilayer" else ""))
+        ax.set_title("3D Embedding colored by Schaefer-7 RSN"
+                    + (" (layers as shapes)" if mode == "multilayer" else ""))
 
-        # ---------- compute cube limits from DATA (not current axis) ----------
+        # ---------- cube limits ----------
         def _safe_range(lo, hi):
-            if not np.isfinite(lo) or not np.isfinite(hi): return -1.0, 1.0
-            if hi == lo: return lo - 0.5, hi + 0.5
+            if not np.isfinite(lo) or not np.isfinite(hi):
+                return -1.0, 1.0
+            if hi == lo:
+                return lo - 0.5, hi + 0.5
             return lo, hi
 
         xlo, xhi = _safe_range(np.nanmin(x), np.nanmax(x))
@@ -1105,7 +1115,6 @@ class LaminarRestingState:
             zl, zh = zlo, zhi
 
         # ---------- best-fit plane ----------
-        # compute before setting limits; draw over the *cube* so coverage is complete
         r_xy, p_xy = pearsonr(x, y)
         r_xz, p_xz = pearsonr(x, z)
         r_yz, p_yz = pearsonr(y, z)
@@ -1125,19 +1134,57 @@ class LaminarRestingState:
             ZZ = a * XX + b * YY + c
             ax.plot_surface(XX, YY, ZZ, alpha=plane_alpha, linewidth=0, antialiased=True)
 
-        # ---------- apply cube limits & equal box aspect ----------
+        # ---------- axis limits / aspect ----------
         ax.set_xlim(xl, xh)
         ax.set_ylim(yl, yh)
         ax.set_zlim(zl, zh)
         if equalize_axes:
-            # equal scale in display space
             try:
                 ax.set_box_aspect((1, 1, 1))
             except Exception:
-                pass  # older mpl fallback: at least limits are equalized
-
-        # a gentle default view
+                pass
         ax.view_init(elev=22, azim=38)
+
+        # ---------- marginals (histograms by network) ----------
+        if show_marginals:
+            bins_x = np.linspace(xl, xh, hist_bins + 1)
+            bins_y = np.linspace(yl, yh, hist_bins + 1)
+            bins_z = np.linspace(zl, zh, hist_bins + 1)
+
+            uniq_nets = np.unique(nets)
+
+            # X histogram (top)
+            for net in uniq_nets:
+                m = (nets == net)
+                ax_histx.hist(x[m], bins=bins_x,
+                            color=net_colours[int(net)], alpha=0.4,
+                            density=False, label=network_labels[int(net)])
+            ax_histx.set_xlim(xl, xh)
+            ax_histx.set_xticklabels([])
+            ax_histx.set_ylabel("count", fontsize=7)
+            ax_histx.tick_params(axis='y', labelsize=7)
+
+            # Y histogram (right; horizontal)
+            for net in uniq_nets:
+                m = (nets == net)
+                ax_histy.hist(y[m], bins=bins_y,
+                            orientation='horizontal',
+                            color=net_colours[int(net)], alpha=0.4,
+                            density=False)
+            ax_histy.set_ylim(yl, yh)
+            ax_histy.set_yticklabels([])
+            ax_histy.set_xlabel("count", fontsize=7)
+            ax_histy.tick_params(axis='x', labelsize=7)
+
+            # Z histogram (small top-right)
+            for net in uniq_nets:
+                m = (nets == net)
+                ax_histz.hist(z[m], bins=bins_z,
+                            color=net_colours[int(net)], alpha=0.4,
+                            density=False)
+            ax_histz.set_xlabel(z_label, fontsize=7)
+            ax_histz.set_ylabel("count", fontsize=7)
+            ax_histz.tick_params(axis='both', labelsize=7)
 
         # ---------- stats textbox ----------
         stats_txt = (f"r_xy={r_xy:.3f} (p={p_xy:.2g})\n"
@@ -1151,7 +1198,6 @@ class LaminarRestingState:
 
         # ---------- legends ----------
         if len(network_labels) == 7:
-            # Show only present networks, but in the desired light→dark order
             present = set(int(i) for i in np.unique(nets))
             legend_order = [i for i in [1, 0, 3, 2, 6, 5, 4] if i in present]
         else:
@@ -1181,10 +1227,13 @@ class LaminarRestingState:
             else:
                 fname = f"Scatter3D_{'multi' if mode=='multilayer' else 'single'}.png"
 
-        fig.tight_layout()
+        if not show_marginals:
+            fig.tight_layout()
         fig.savefig(os.path.join(outdir, fname), dpi=500, bbox_inches="tight")
         plt.close(fig)
         print("Saved:", os.path.join(outdir, fname))
+
+
 
 
     def plotScatterCentroids(self,
@@ -2240,7 +2289,7 @@ class LaminarRestingState:
         titles=["Deep", "Middle", "Superficial", "Average"],
         folder_name="eigenvector_layers",
         # NEW:
-        atlas="mmp",                             # "mmp" (Glasser) or "schaefer"
+        atlas="schaefer",                             # "mmp" (Glasser) or "schaefer"
         schaefer_label_L="/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",                   # path to Schaefer*.L.label.gii (fs_LR 32k)
         schaefer_label_R="/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"                    # path to Schaefer*.R.label.gii (fs_LR 32k)
     ):
