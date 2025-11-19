@@ -233,7 +233,7 @@ class LaminarRestingState:
                 layer_groups[layer_num].append(file)
             except Exception as e:
                 # raise ValueError(f"Could not extract layer number from filename: {file}") from e
-                print(f"Could not extract layer number from filename: {file}")
+                # print(f"Could not extract layer number from filename: {file}")
                 continue
 
         sorted_layers = sorted(layer_groups.items())

@@ -2,7 +2,7 @@ import laminarRestingState as lrs
 import numpy as np
 import os
 import laminarAnalyses as laman
-import bimodularityAnalysis as bam
+# import bimodularityAnalysis as bam
 from numpy.linalg import inv
 import scipy
 from pathlib import Path
@@ -48,10 +48,10 @@ output_dir = root
 subs = len(data_dirs)
 os.makedirs(output_dir, exist_ok=True)
 
-analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs"
+analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_test"
 
 
-if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs":
+if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_test":
 
     def subtractAverage(adjMatrix):
         avg_matrix = np.nanmean(adjMatrix, axis=2)
@@ -133,6 +133,7 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVe
             # restStateSub.plotReliability(TR=3.3) # Run this once per fHC
             _, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
 
+
             if subtractAverage_true:
                 adjMatrix_SA = subtractAverage(adj_matrix_within_corr)
                 adjMatrix = thresh_and_binarize(adjMatrix_SA, setThresh=setThresh, binarize=binarize_flag)
@@ -143,7 +144,10 @@ if analysis=="WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVe
 
         adj_matrices_4d = np.stack(adj_matrices_appended, axis=3)
         mean_adj_matrix = np.nanmean(adj_matrices_4d, axis=3)
+        print(mean_adj_matrix[1,5])
         r_matrix = backToR(mean_adj_matrix)
+        print(r_matrix[1,5])
+
 
         M = defineAdj(r_matrix)
         print(np.max(M))

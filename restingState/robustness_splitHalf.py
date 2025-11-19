@@ -21,67 +21,11 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-import laminarRestingState as lrs
-import laminarAnalyses as laman
-
+import laminar_rs as lrs
 
 # =============================
 # Helper functions
 # =============================
-
-def subtractAverage(adjMatrix):
-    """Subtract across-run/subject average (over 3rd dim) and zero negatives."""
-    avg_matrix = np.nanmean(adjMatrix, axis=2)
-    for i in range(adjMatrix.shape[2]):
-        adjMatrix[:, :, i] -= avg_matrix
-    adjMatrix = np.where(adjMatrix > 0, adjMatrix, 0)
-    return adjMatrix
-
-
-def thresh_and_binarize(adj, setThresh=0, binarize=False):
-    """
-    Threshold each row by magnitude and optionally binarize.
-    If not binarized, apply Fisher z-transform to retained values.
-    adj: (N, N, num_layers)
-    """
-    N, _, num_layers = adj.shape
-    A = np.empty((N, N, num_layers), dtype=float)
-    percentThresh = setThresh / 100.0
-
-    for layer in range(num_layers):
-        mag = np.abs(adj[:, :, layer])
-        sorted_idx = np.argsort(mag, axis=1)  # (N, N)
-        mask = np.ones_like(mag, dtype=bool)
-        rows = np.arange(N)[:, None]
-        k = int(np.floor(percentThresh * N))
-        if k > 0:
-            mask[rows, sorted_idx[:, :k]] = False
-
-        if binarize:
-            A[:, :, layer] = mask.astype(int)
-        else:
-            corr_masked = adj[:, :, layer] * mask
-            eps = 1 - 1e-6
-            corr_masked = np.clip(corr_masked, -eps, eps)
-            z_transformed = np.arctanh(corr_masked)
-            np.fill_diagonal(z_transformed, 0)
-            A[:, :, layer] = z_transformed
-    return A
-
-
-def backToR(adj):
-    """
-    Convert z-values back to correlations, clipping to avoid tanh overflow.
-    adj: (N, N, num_layers)
-    """
-    N, _, num_layers = adj.shape
-    A = np.empty((N, N, num_layers), dtype=float)
-    for layer in range(num_layers):
-        r_matrix = np.clip(adj[:, :, layer], -5, 5)
-        z_matrix = np.tanh(r_matrix)
-        np.fill_diagonal(z_matrix, 0)
-        A[:, :, layer] = z_matrix
-    return A
 
 
 def defineAdj(adjMatrix, interlayer_weight=1.0):
@@ -167,25 +111,25 @@ def run_split_half_robustness(
         M2 = defineAdj(mean_r_g2)
 
         # gradients
-        G1, eig1 = laman.run_gradient_analysis(
+        G1, eig1 = lrs.gradients.run_gradient_analysis(
             M1, n_components=n_components, kernel=kernel, random_state=random_state
         )
-        G2, eig2 = laman.run_gradient_analysis(
+        G2, eig2 = lrs.gradients.run_gradient_analysis(
             M2, n_components=n_components, kernel=kernel, random_state=random_state
         )
 
         # dissimilarity metrics
-        D_inter_1, _, _, _ = laman.inter_areal_dissimilarity(
+        D_inter_1, _, _, _ = lrs.gradients.inter_areal_dissimilarity(
             G1, base_folder, N=N, zscore_within_layer=True
         )
-        D_inter_2, _, _, _ = laman.inter_areal_dissimilarity(
+        D_inter_2, _, _, _ = lrs.gradients.inter_areal_dissimilarity(
             G2, base_folder, N=N, zscore_within_layer=True
         )
 
-        D_intra_1, D_Deep_1, D_Mid_1, D_Sup_1 = laman.intra_areal_dissimilarity(
+        D_intra_1, D_Deep_1, D_Mid_1, D_Sup_1 = lrs.gradients.intra_areal_dissimilarity(
             G1, base_folder, N=N, zscore_within_layer=True
         )
-        D_intra_2, D_Deep_2, D_Mid_2, D_Sup_2 = laman.intra_areal_dissimilarity(
+        D_intra_2, D_Deep_2, D_Mid_2, D_Sup_2 = lrs.gradients.intra_areal_dissimilarity(
             G2, base_folder, N=N, zscore_within_layer=True
         )
 
@@ -271,7 +215,7 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # must match the analysis folder name you use elsewhere
-    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs"
+    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
 
     kernel = None
     n_components = 20       # original number of gradients
@@ -292,25 +236,21 @@ if __name__ == "__main__":
 
         for iSub, data_dir in enumerate(data_dirs):
             print(f"[INFO] Subject {iSub+1}/{subs}: {data_dir}")
-            restStateSub = lrs.LaminarRestingState(
-                data_dir,
-                N,
-                setThresh,
-                num_layers=num_layers,
-                atlas_dir=atlas_dir,
+
+            cfg = lrs.config.LaminarConfig(
+                data_dir=data_dir,
+                N=N,
+                set_thresh=0,
+                num_layers=3,
             )
-            _, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
 
-            if subtractAverage_true:
-                adjMatrix_SA = subtractAverage(adj_matrix_within_corr)
-                adjMatrix = thresh_and_binarize(
-                    adjMatrix_SA, setThresh=setThresh, binarize=binarize_flag
-                )
-            else:
-                adjMatrix = thresh_and_binarize(
-                    adj_matrix_within_corr, setThresh=setThresh, binarize=binarize_flag
-                )
+            # adj_full is ignored; we only want per-layer Fisher z
+            _, corr_layer_z = lrs.connectivity.within_layer_block_matrix(cfg, subtract_average=False)
 
+            adjMatrix = lrs.connectivity.thresh_and_binarize(
+                corr_layer_z,
+                set_thresh=0,
+        )
             adj_matrices_appended.append(adjMatrix)
 
         # adj_matrices_4d: z-values, shape (N, N, L, subs)
@@ -320,7 +260,7 @@ if __name__ == "__main__":
         # Convert each subject's z-matrix to r
         r_matrices_4d = np.empty_like(adj_matrices_4d)
         for si in range(subs):
-            r_matrices_4d[:, :, :, si] = backToR(adj_matrices_4d[:, :, :, si])
+            r_matrices_4d[:, :, :, si] = lrs.connectivity.fisher_z_to_r(adj_matrices_4d[:, :, :, si])
 
         np.save(subj_fc_path, r_matrices_4d)
         print(f"[INFO] saved subject-level FCs to: {subj_fc_path}")
