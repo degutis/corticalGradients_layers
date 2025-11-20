@@ -16,91 +16,7 @@ import numpy as np
 import scipy.io
 import matplotlib.pyplot as plt
 
-import laminarRestingState as lrs
-import laminarAnalyses as laman
-
-
-# =============================
-# Helper functions
-# =============================
-
-def subtractAverage(adjMatrix):
-    """Subtract across-subject average (over 3rd dim) and zero negatives."""
-    avg_matrix = np.nanmean(adjMatrix, axis=2)
-    for i in range(adjMatrix.shape[2]):
-        adjMatrix[:, :, i] -= avg_matrix
-    adjMatrix = np.where(adjMatrix > 0, adjMatrix, 0)
-    return adjMatrix
-
-
-def thresh_and_binarize(adj, setThresh=0, binarize=False):
-    """
-    Threshold each row by magnitude and optionally binarize.
-    If not binarized, apply Fisher z-transform to retained values.
-    adj: (N, N, num_layers)
-    """
-    N, _, num_layers = adj.shape
-    A = np.empty((N, N, num_layers), dtype=float)
-    percentThresh = setThresh / 100.0
-
-    for layer in range(num_layers):
-        mag = np.abs(adj[:, :, layer])
-        sorted_idx = np.argsort(mag, axis=1)  # (N, N)
-        mask = np.ones_like(mag, dtype=bool)
-        rows = np.arange(N)[:, None]
-        k = int(np.floor(percentThresh * N))
-        if k > 0:
-            mask[rows, sorted_idx[:, :k]] = False
-
-        if binarize:
-            A[:, :, layer] = mask.astype(int)
-        else:
-            corr_masked = adj[:, :, layer] * mask
-            eps = 1 - 1e-6
-            corr_masked = np.clip(corr_masked, -eps, eps)
-            z_transformed = np.arctanh(corr_masked)
-            np.fill_diagonal(z_transformed, 0)
-            A[:, :, layer] = z_transformed
-    return A
-
-
-def backToR(adj):
-    """
-    Convert z-values back to correlations, clipping to avoid tanh overflow.
-    adj: (N, N, num_layers)
-    """
-    N, _, num_layers = adj.shape
-    A = np.empty((N, N, num_layers), dtype=float)
-    for layer in range(num_layers):
-        r_matrix = np.clip(adj[:, :, layer], -5, 5)
-        z_matrix = np.tanh(r_matrix)
-        np.fill_diagonal(z_matrix, 0)
-        A[:, :, layer] = z_matrix
-    return A
-
-
-def defineAdj(adjMatrix, interlayer_weight=1.0):
-    """
-    Construct a multiplex adjacency matrix M from layer-wise adjMatrix.
-    adjMatrix: (N, N, L)
-    M: (L*N, L*N), with interlayer_weight on off-diagonal layer couplings.
-    """
-    A = np.asarray(adjMatrix)
-    if A.ndim != 3 or A.shape[0] != A.shape[1]:
-        raise ValueError("adjMatrix must have shape (N, N, L)")
-
-    N, _, L = A.shape
-    dtype = np.result_type(A.dtype, float)
-
-    M = np.zeros((L * N, L * N), dtype=dtype)
-    for l in range(L):
-        M[l * N:(l + 1) * N, l * N:(l + 1) * N] = A[:, :, l]
-
-    layer_coupling = np.ones((L, L), dtype=dtype) - np.eye(L, dtype=dtype)
-    M += interlayer_weight * np.kron(layer_coupling, np.eye(N, dtype=dtype))
-
-    np.fill_diagonal(M, 0)
-    return M
+import laminar_rs as lrs
 
 
 def vector_corr(x, y):
@@ -119,7 +35,7 @@ def run_gradient_robustness(
     output_dir,
     analysis,
     grad_min=5,
-    grad_max=25,
+    grad_max=15,
     kernel=None,
     random_state=13011991,
 ):
@@ -144,7 +60,7 @@ def run_gradient_robustness(
 
     for n_comp in grad_list:
         print(f"\n[ROBUSTNESS] Running gradients with n_components={n_comp}")
-        G, eig = laman.run_gradient_analysis(
+        G, eig = lrs.gradients.run_gradient_analysis(
             M, n_components=n_comp, kernel=kernel, random_state=random_state
         )
 
@@ -152,10 +68,10 @@ def run_gradient_robustness(
         os.makedirs(subfolder, exist_ok=True)
 
         # Compute dissimilarity measures
-        D_inter, D_inter_deep, D_inter_mid, D_inter_sup = laman.inter_areal_dissimilarity(
+        D_inter, D_inter_deep, D_inter_mid, D_inter_sup = lrs.gradients.inter_areal_dissimilarity(
             G, subfolder, N=N, zscore_within_layer=True
         )
-        D_intra, D_Deep, D_Mid, D_Sup = laman.intra_areal_dissimilarity(
+        D_intra, D_Deep, D_Mid, D_Sup = lrs.gradients.intra_areal_dissimilarity(
             G, subfolder, N=N, zscore_within_layer=True
         )
 
@@ -260,11 +176,10 @@ if __name__ == "__main__":
     setThresh = 0          # % of weakest edges per row to drop
     num_layers = 3
     binarize_flag = False
-    subtractAverage_true = False
     largeGap = False
 
     BASE = Path('/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations')
-    SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 22]
+    SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22]
 
     gap_dir = f'{"large" if largeGap else "small"}Gap_Schaefer'
     root = BASE / gap_dir
@@ -276,11 +191,11 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # must match the analysis folder name used when FC_matrix.npy was created
-    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_32k_withEigVecs"
+    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
 
     kernel = None
     grad_min = 5
-    grad_max = 25
+    grad_max = 15
 
     # ---- Load or compute FC matrix M ----
     fc_path = os.path.join(output_dir, analysis, 'FC_matrix.npy')
@@ -299,32 +214,26 @@ if __name__ == "__main__":
 
         for iSub, data_dir in enumerate(data_dirs):
             print(f"[INFO] Subject {iSub+1}/{subs}: {data_dir}")
-            restStateSub = lrs.LaminarRestingState(
-                data_dir,
-                N,
-                setThresh,
-                num_layers=num_layers,
-                atlas_dir=atlas_dir,
+            restStateSub = lrs.config.LaminarConfig(
+                data_dir=data_dir,
+                N=N,
+                set_thresh=0,
+                num_layers=3,
             )
-            _, adj_matrix_within_corr = restStateSub.get_adj_matrix_withinLayers_multRuns()
 
-            if subtractAverage_true:
-                adjMatrix_SA = subtractAverage(adj_matrix_within_corr)
-                adjMatrix = thresh_and_binarize(
-                    adjMatrix_SA, setThresh=setThresh, binarize=binarize_flag
-                )
-            else:
-                adjMatrix = thresh_and_binarize(
-                    adj_matrix_within_corr, setThresh=setThresh, binarize=binarize_flag
-                )
+            _, corr_layer_z = lrs.connectivity.within_layer_block_matrix(cfg, subtract_average=False)
 
+            adjMatrix = lrs.connectivity.thresh_and_binarize(
+                corr_layer_z,
+                set_thresh=0,
+        )
             adj_matrices_appended.append(adjMatrix)
 
         adj_matrices_4d = np.stack(adj_matrices_appended, axis=3)
         mean_adj_matrix = np.nanmean(adj_matrices_4d, axis=3)
-        r_matrix = backToR(mean_adj_matrix)
+        r_matrix = lrs.connectivity.fisher_z_to_r(mean_adj_matrix)
 
-        M = defineAdj(r_matrix)
+        M = lrs.connectivity.build_multiplex_adjacency(r_matrix)
         print("[INFO] FC matrix constructed.")
         print("  max:", np.max(M))
         print("  min:", np.min(M))

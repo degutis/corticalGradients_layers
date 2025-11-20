@@ -23,34 +23,6 @@ import matplotlib.pyplot as plt
 
 import laminar_rs as lrs
 
-# =============================
-# Helper functions
-# =============================
-
-
-def defineAdj(adjMatrix, interlayer_weight=1.0):
-    """
-    Construct a multiplex adjacency matrix M from layer-wise adjMatrix.
-    adjMatrix: (N, N, L)
-    M: (L*N, L*N), with interlayer_weight on off-diagonal layer couplings.
-    """
-    A = np.asarray(adjMatrix)
-    if A.ndim != 3 or A.shape[0] != A.shape[1]:
-        raise ValueError("adjMatrix must have shape (N, N, L)")
-
-    N, _, L = A.shape
-    dtype = np.result_type(A.dtype, float)
-
-    M = np.zeros((L * N, L * N), dtype=dtype)
-    for l in range(L):
-        M[l * N:(l + 1) * N, l * N:(l + 1) * N] = A[:, :, l]
-
-    layer_coupling = np.ones((L, L), dtype=dtype) - np.eye(L, dtype=dtype)
-    M += interlayer_weight * np.kron(layer_coupling, np.eye(N, dtype=dtype))
-
-    np.fill_diagonal(M, 0)
-    return M
-
 
 def vector_corr(x, y):
     """Correlation between two vectors (any shape), ignoring NaNs."""
@@ -67,7 +39,7 @@ def run_split_half_robustness(
     N,
     output_dir,
     analysis,
-    n_components=20,
+    n_components=10,
     n_iter=500,
     kernel=None,
     random_state=13011991,
@@ -107,8 +79,8 @@ def run_split_half_robustness(
         mean_r_g2 = np.nanmean(r_matrices_4d[:, :, :, g2], axis=3)
 
         # multiplex adjacency for each half
-        M1 = defineAdj(mean_r_g1)
-        M2 = defineAdj(mean_r_g2)
+        M1 = lrs.connectivity.build_multiplex_adjacency(mean_r_g1)
+        M2 = lrs.connectivity.build_multiplex_adjacency(mean_r_g2)
 
         # gradients
         G1, eig1 = lrs.gradients.run_gradient_analysis(
@@ -218,7 +190,7 @@ if __name__ == "__main__":
     analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
 
     kernel = None
-    n_components = 20       # original number of gradients
+    n_components = 10       # original number of gradients
     N_ITER = 500            # suggested number of split-half iterations
 
     subj_fc_path = os.path.join(output_dir, analysis, 'FC_subject_matrices_r.npy')
