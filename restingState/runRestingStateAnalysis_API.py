@@ -11,6 +11,7 @@ from laminar_rs.connectivity import (
 )
 from laminar_rs.gradients import (
     run_gradient_analysis,
+    run_gradient_analysis_auto,
     inter_areal_dissimilarity,
     intra_areal_dissimilarity
 )
@@ -19,30 +20,53 @@ from laminar_rs.plots_embedding import (
     plot_scatter3D_with_plane,
     plot_network_centroids3D,
     plot_scatter_with_global_correlation,
-    plot_scatter_centroids
+    plot_scatter_centroids,
+    plot_rsn_distributions,
+    plot_rsn_distributions_by_network
 )
 from laminar_rs.flatmaps import plotFlatMap
-from laminar_rs.models import run_ff_fb_models
+from laminar_rs.models import run_ff_fb_models, plot_horizontal_correlation_bar
+from laminar_rs.surface_maps import plotSurfaceMap, plotSurfaceMap_LH_gradients
 
 
 # ----------------- Parameters -----------------
 
-N = 400
+ATLAS = "schaefer"
+# ATLAS = "glasser"
 SET_THRESH = 0.0
 NUM_LAYERS = 3
 LARGE_GAP = False
-N_COMPONENTS = 10
+DATA_SET = "huppi"
 
-BASE = Path("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations")
-SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22]
 
-GAP_DIR = f'{"large" if LARGE_GAP else "small"}Gap_Schaefer'
+if DATA_SET=="huppi":
+    BASE = Path("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations")
+    SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22]
+elif DATA_SET=="kd":
+    BASE = Path("/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/correlations")
+    SUBJECTS = [1, 2, 4]
+
+if ATLAS=="schaefer":
+    N = 400
+    GAP_DIR = f'{"large" if LARGE_GAP else "small"}Gap_Schaefer'
+    HCP = False
+
+else:
+    N=360
+    GAP_DIR = f'{"large" if LARGE_GAP else "small"}Gap_Glasser'
+    HCP = True
+
 ROOT = BASE / GAP_DIR
 
-DATA_DIRS = [ROOT / f"sub-LAM{s:03d}" for s in SUBJECTS]
+
+if DATA_SET=="huppi":
+    DATA_DIRS = [ROOT / f"sub-LAM{s:03d}" for s in SUBJECTS]
+elif DATA_SET=="kd":
+    DATA_DIRS = [ROOT / f"sub-{s:02d}" for s in SUBJECTS]
+
 OUTPUT_DIR = ROOT
 
-ANALYSIS_NAME = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
+ANALYSIS_NAME = "WithinLayer_gradients_kernelCOS_API"
 RESULT_PATH = OUTPUT_DIR / ANALYSIS_NAME / "FC_matrix.npy"
 
 
@@ -102,8 +126,13 @@ def main() -> None:
 
     output = OUTPUT_DIR / ANALYSIS_NAME
 
-    G, eig = run_gradient_analysis(M, n_components=N_COMPONENTS)
-   
+
+
+    G, eig, all_l, frac, cum, n_keep = run_gradient_analysis_auto(
+        M, outputDir=output, max_components=50, kernel="cosine", var_threshold=0.85,
+    )
+    print(f"Using {n_keep} gradients")
+
     output = OUTPUT_DIR / ANALYSIS_NAME / "dissimilarityGradient"
 
     D_inter, D_inter_deep, D_inter_mid, D_inter_sup = inter_areal_dissimilarity(G, output, N=N)
@@ -115,24 +144,46 @@ def main() -> None:
     D_Mid_standard = (D_Mid - np.min(D_Mid)) / ((np.max(D_Mid) - np.min(D_Mid)))
     D_Sup_standard = (D_Sup - np.min(D_Sup)) / ((np.max(D_Sup) - np.min(D_Sup)))
 
+    plotSurfaceMap_LH_gradients(G, outdir=output, outname="gradients.png", HCP=HCP, cmap="PRGn")
+    plotSurfaceMap(np.arange(N), output, "Surface_Schaefer", cmap = "gray", HCP=HCP)
 
     # ---------------------------------------------------------------------
     #                           Flatmaps and surface maps
     # ---------------------------------------------------------------------
 
-    plot_on_mmhcp_surface_multipleLayers(D_inter[:,np.newaxis], output, "D_Inter")        
-    plot_on_mmhcp_surface_multipleLayers(D_intra[:,np.newaxis], output, "D_Intra")        
-    plot_on_mmhcp_surface_multipleLayers(D_Deep[:,np.newaxis], output, "D_Deep", vmin=0,vmax=0.5)        
-    plot_on_mmhcp_surface_multipleLayers(D_Mid[:,np.newaxis], output, "D_Mid", vmin=0,vmax=0.5)        
-    plot_on_mmhcp_surface_multipleLayers(D_Sup[:,np.newaxis], output, "D_Sup", vmin=0,vmax=0.5)       
+    out_inter = plotSurfaceMap(D_inter, output, "SurfaceMap_interFlatMap.png", cmap = "magma", HCP=HCP)
+    out_intra = plotSurfaceMap(D_intra, output, "SurfaceMap_intraFlatMap.png", cmap = "cividis", HCP=HCP)
+    out_intraD = plotSurfaceMap(D_Deep, output, "SurfaceMap_intraDeep_FlatMap.png", vmin=0,vmax=0.5, cmap = "cividis", HCP=HCP)
+    out_intraM = plotSurfaceMap(D_Mid, output, "SurfaceMap_intraMid_FlatMap.png", vmin=0,vmax=0.5, cmap = "cividis", HCP=HCP)
+    out_intraS = plotSurfaceMap(D_Sup, output, "SurfaceMap_intraSup_FlatMap.png", vmin=0,vmax=0.5, cmap = "cividis", HCP=HCP)
+
+    # plot_on_mmhcp_surface_multipleLayers(D_inter[:,np.newaxis], output, "D_Inter")        
+    # plot_on_mmhcp_surface_multipleLayers(D_intra[:,np.newaxis], output, "D_Intra")        
+    # plot_on_mmhcp_surface_multipleLayers(D_Deep[:,np.newaxis], output, "D_Deep", vmin=0,vmax=0.5)        
+    # plot_on_mmhcp_surface_multipleLayers(D_Mid[:,np.newaxis], output, "D_Mid", vmin=0,vmax=0.5)        
+    # plot_on_mmhcp_surface_multipleLayers(D_Sup[:,np.newaxis], output, "D_Sup", vmin=0,vmax=0.5)       
+
+    plot_rsn_distributions([D_Deep, D_Mid, D_Sup], out_dir=output, name="RSN_intraLayers", 
+                           array_labels=["Deep", "Middle", "Superficial"], atlas=ATLAS, y_label="Intra-regional Distance")
+
+
+    plot_rsn_distributions_by_network([D_Deep, D_Mid, D_Sup], out_dir=output, name="RSN_intraLayers", 
+                           array_labels=["Deep", "Middle", "Superficial"], atlas=ATLAS, y_label="Intra-regional Distance")
+
+    plot_rsn_distributions([D_inter, D_intra], out_dir=output, name="RSN", 
+                           array_labels=["Inter", "Intra"], atlas=ATLAS, y_label="Distance", share_yaxis = False)
+
+    # plot_rsn_distributions([D_intra], out_dir=output, name="RSN_intra", 
+    #                        array_labels=["Intra"], atlas=ATLAS, y_label="Intra-regional Distance")
 
     output = OUTPUT_DIR / ANALYSIS_NAME / "dissimilarityGradient" / "Flatmap"
 
-    plotFlatMap(D_inter, output, "Flatmap_interFlatMap.png")
-    plotFlatMap(D_intra, output, "Flatmap_intraFlatMap.png")
-    plotFlatMap(D_Deep, output, "Flatmap_intraDeep_FlatMap.png", vmin=0,vmax=0.5)
-    plotFlatMap(D_Mid, output, "Flatmap_intraMid_FlatMap.png", vmin=0,vmax=0.5)
-    plotFlatMap(D_Sup, output, "Flatmap_intraSup_FlatMap.png", vmin=0,vmax=0.5)
+    plotFlatMap(D_inter, output, "Flatmap_interFlatMap.png", HCP=HCP)
+    plotFlatMap(D_intra, output, "Flatmap_intraFlatMap.png", HCP=HCP)
+    plotFlatMap(D_Deep, output, "Flatmap_intraDeep_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
+    plotFlatMap(D_Mid, output, "Flatmap_intraMid_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
+    plotFlatMap(D_Sup, output, "Flatmap_intraSup_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
+
 
     # ---------------------------------------------------------------------
     #                           Scatter plots
@@ -141,49 +192,49 @@ def main() -> None:
     output = OUTPUT_DIR / ANALYSIS_NAME / "dissimilarityGradient" / "Scatter"
 
     plot_scatter3D_with_plane(D_Sup[:,np.newaxis], output, Y=D_Mid[:,np.newaxis], Z=D_Deep[:,np.newaxis], layer_labels="AcrossLayers", 
-                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_uncorrected.svg")
+                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_uncorrected.svg", atlas=ATLAS)
 
     plot_network_centroids3D(D_Sup[:,np.newaxis], output, Y=D_Mid[:,np.newaxis], Z=D_Deep[:,np.newaxis], 
-                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_uncorrected.svg")
+                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_uncorrected.svg", atlas=ATLAS)
 
 
     plot_scatter3D_with_plane(D_Sup_standard[:,np.newaxis], output, Y=D_Mid_standard[:,np.newaxis], Z=D_Deep_standard[:,np.newaxis], layer_labels="AcrossLayers", 
-                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_corrected.svg")
+                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_DeepMidSup_corrected.svg", atlas=ATLAS)
 
     plot_network_centroids3D(D_Sup_standard[:,np.newaxis], output, Y=D_Mid_standard[:,np.newaxis], Z=D_Deep_standard[:,np.newaxis], 
-                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_corrected.svg")
+                                        x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_corrected.svg", atlas=ATLAS)
 
     plot_scatter_with_global_correlation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), output, 
-                                    x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg")
+                                    x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg", atlas=ATLAS)
 
     plot_scatter_centroids(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), output, 
-                        x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra_centroid.svg")
+                        x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra_centroid.svg", atlas=ATLAS)
 
     # ---------------------------------------------------------------------
     #                           Scatter plots layer-specific 2D
     # ---------------------------------------------------------------------
 
     plot_scatter_with_global_correlation(np.concatenate([D_Sup_standard[:,np.newaxis], D_Mid_standard[:,np.newaxis]], axis=1), output, 
-                                    x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: middle", fname="Scatter_SupMid.svg")
+                                    x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: middle", fname="Scatter_SupMid.svg", atlas=ATLAS)
 
     plot_scatter_centroids(np.concatenate([D_Sup_standard[:,np.newaxis], D_Mid_standard[:,np.newaxis]], axis=1), output, 
-                        x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: middle", fname="Scatter_SupMid_centroid.svg")
+                        x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: middle", fname="Scatter_SupMid_centroid.svg", atlas=ATLAS)
 
     plot_scatter_with_global_correlation(np.concatenate([D_Sup_standard[:,np.newaxis], D_Deep_standard[:,np.newaxis]], axis=1), output, 
-                                    x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: deep", fname="Scatter_SupDeep.svg")
+                                    x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: deep", fname="Scatter_SupDeep.svg", atlas=ATLAS)
 
     plot_scatter_centroids(np.concatenate([D_Sup_standard[:,np.newaxis], D_Deep_standard[:,np.newaxis]], axis=1), output, 
-                        x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: deep", fname="Scatter_SupDeep_centroid.svg")
+                        x_label="Intraparcel laminar difference: superficial", y_label ="Intraparcel laminar difference: deep", fname="Scatter_SupDeep_centroid.svg", atlas=ATLAS)
 
     plot_scatter_with_global_correlation(np.concatenate([D_Mid_standard[:,np.newaxis], D_Deep_standard[:,np.newaxis]], axis=1), output, 
-                                    x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: deep", fname="Scatter_MidDeep.svg")
+                                    x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: deep", fname="Scatter_MidDeep.svg", atlas=ATLAS)
 
     plot_scatter_centroids(np.concatenate([D_Mid_standard[:,np.newaxis], D_Deep_standard[:,np.newaxis]], axis=1), output, 
-                        x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: deep", fname="Scatter_MidDeep_centroid.svg")
+                        x_label="Intraparcel laminar difference: middle", y_label ="Intraparcel laminar difference: deep", fname="Scatter_MidDeep_centroid.svg", atlas=ATLAS)
 
 
     # ---------------------------------------------------------------------
-    #                           Scatter plots BigBrain Gradient
+    #      Scatter plots BigBrain Gradient. Will only run for Schaefer 400
     # ---------------------------------------------------------------------
 
     output = OUTPUT_DIR / ANALYSIS_NAME / "ENIGMA"
@@ -209,9 +260,12 @@ def main() -> None:
     plot_scatter_with_global_correlation(np.concatenate([D_Sup_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), output, 
                                         x_label="Intraparcel laminar difference: superficial", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_IntraSupLamThick.svg")
 
+    plot_horizontal_correlation_bar([D_Sup, D_Mid, D_Deep], G_bigBrain, output, "Layers_G_BigBrain.svg")
+
+    bigBrain_surf = plotSurfaceMap(G_bigBrain, output, "SurfaceMap_BigBrain_grad.png", cmap = "PRGn", HCP=HCP)
 
     # ---------------------------------------------------------------------
-    #                           Scatter plots BigBrain Gradient
+    #                           rDCM Analysis
     # ---------------------------------------------------------------------
 
     output = OUTPUT_DIR / ANALYSIS_NAME / "DCM"
@@ -220,6 +274,8 @@ def main() -> None:
     rDCM_eff = rDCM_matrix["results"].Strength_Efferent_wholeBrain   
     rDCM_aff = rDCM_matrix["results"].Strength_Afferent_wholeBrain   
     rDCM_grad = rDCM_eff - rDCM_aff
+
+    rDCM_grad_surf = plotSurfaceMap(rDCM_grad, output, "SurfaceMap_rDCM_grad.png", cmap = "PRGn", HCP=HCP)
 
     rDCM_grad = (rDCM_grad - np.min(rDCM_grad)) / ((np.max(rDCM_grad) - np.min(rDCM_grad)))
     rDCM_eff = (rDCM_eff - np.min(rDCM_eff)) / ((np.max(rDCM_eff) - np.min(rDCM_eff)))

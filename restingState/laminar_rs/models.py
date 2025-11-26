@@ -1,6 +1,6 @@
 # laminar_rs/models.py
 from __future__ import annotations
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -137,10 +137,10 @@ def plot_horizontal_correlation_bar(
         gradient: np.ndarray,
         out_dir,
         fname: str,
-        layer_names: Optional[List[str]] = None,
+        layer_names: Optional[List[str]] = ["Superficial", "Middle", "Deep"],
         title: str = "Effective connectivity vs. laminar indices",
         xlabel: str = "Association with send/receive gradient",
-        xlim: Tuple[float, float] = (-0.8, 0.8),
+        xlim: Tuple[float, float] = (-1, 1),
         alpha: float = 0.05,
         robust_se: str = "HC3",
         do_fdr: bool = True,

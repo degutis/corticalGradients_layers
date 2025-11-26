@@ -2,16 +2,18 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, List, Optional, Dict, List, Literal, Sequence
 
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from matplotlib.lines import Line2D
 from sklearn.cluster import KMeans
 import nibabel as nib
 from nilearn import plotting
 from scipy.stats import pearsonr, t as t_dist
+from scipy.stats import f_oneway, gaussian_kde
 
 import hcp_utils as hcp
 
@@ -1634,3 +1636,610 @@ def plot_two_dim_embedding_byNetwork(
     plt.savefig(outpath, bbox_inches="tight")
     plt.close()
     print("Saved:", outpath)
+
+
+
+# ---------- plot violin or bar plots ----------
+
+
+def plot_rsn_distributions(
+    arrays: Sequence[np.ndarray],
+    out_dir: str | Path,
+    name: str = "RSN_distributions",
+    *,
+    atlas: str = "schaefer",
+    schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+    schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+    network_labels: Optional[List[str]] = None,
+    array_labels: Optional[List[str]] = None,
+    kind: Literal["violin", "bar"] = "violin",
+    network_cmap: str = "tab20",
+    y_label: str = "Value",
+    fname: Optional[str] = None,
+    share_yaxis: bool = True,
+) -> str:
+    """
+    Plot distributions of parcel-wise values per canonical RSN, for a number
+    of arrays (e.g., deep/mid/sup). Each array becomes one subplot.
+
+    Parameters
+    ----------
+    arrays : sequence of np.ndarray
+        Each array must be 1D of length N (number of parcels). Typically:
+        [distanceSum_deep, distanceSum_mid, distanceSum_sup], etc.
+    out_dir : str or Path
+        Output directory; a subfolder `name` will be created inside it.
+    name : str
+        Name of the subfolder used under `out_dir`.
+    atlas : {"schaefer", "hcp"}
+        If "schaefer", use Schaefer400 + Schaefer-7 RSNs.
+        Otherwise, use HCP Glasser parcel-to-network assignments (cats0).
+    schaefer_label_L, schaefer_label_R : str
+        Paths to Schaefer label GIFTI files.
+    network_labels : list of str or None
+        RSN labels. If None, defaults are chosen depending on atlas.
+    array_labels : list of str or None
+        Labels for each input array; used as subplot titles.
+    kind : {"violin", "bar"}
+        Type of plot to draw per RSN: violin plots or bar plots.
+    network_cmap : str
+        Name of matplotlib colormap used for RSN colours.
+    y_label : str
+        Y-axis label for the first subplot (and all, if share_yaxis=True).
+    fname : str or None
+        Output filename (within the `name` subfolder). If None, a default
+        based on `kind` will be used.
+    share_yaxis : bool
+        If True, all subplots share the same y-axis limits. If False,
+        each subplot has its own y-scale.
+
+    Returns
+    -------
+    outpath : str
+        Path to the saved figure.
+    """
+    from matplotlib.lines import Line2D  # for legend handles
+
+    out_dir = Path(out_dir)
+    out_dir = out_dir / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # 1. Build RSN assignments (networks0) and labels
+    # ------------------------------------------------------------------
+    if atlas.lower() == "schaefer":
+        if schaefer_label_L is None or schaefer_label_R is None:
+            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
+
+        L_lab, L_map = _load_label_gii(schaefer_label_L)
+        R_lab, R_map = _load_label_gii(schaefer_label_R)
+        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+
+        nets0 = []
+        for k in uL:
+            nets0.append(_schaefer7_from_name(L_map[k]))
+        for k in uR:
+            nets0.append(_schaefer7_from_name(R_map[k]))
+        networks0 = np.asarray(nets0, int)
+        N = networks0.size
+
+        if network_labels is None:
+            network_labels = [
+                "Visual", "Somatomotor", "Dorsal Attn",
+                "Ventral/Salience", "Limbic", "Control", "Default"
+            ]
+    else:
+        # HCP Glasser-style: cortex_parcel_network_assignments.txt (cats0)
+        cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
+        networks0 = cats0 - 1  # make 0-based
+        N = networks0.size
+
+        if network_labels is None:
+            network_labels = [
+                "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+                "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+                "Default", "Posterior-Multimodal",
+                "Ventral-Multimodal", "Orbito-Affective",
+            ]
+
+    # ------------------------------------------------------------------
+    # 2. Check arrays and prepare labels
+    # ------------------------------------------------------------------
+    arrays = [np.asarray(a).reshape(-1) for a in arrays]
+    for idx, a in enumerate(arrays):
+        if a.size != N:
+            raise ValueError(
+                f"Array {idx} has length {a.size}, expected N={N} from atlas."
+            )
+
+    n_arrays = len(arrays)
+    if array_labels is None:
+        array_labels = [f"Index {i+1}" for i in range(n_arrays)]
+    elif len(array_labels) != n_arrays:
+        raise ValueError("array_labels must have same length as arrays.")
+
+    # Unique networks present
+    uniq_nets = np.array(sorted(np.unique(networks0)))
+    n_nets = len(uniq_nets)
+
+    # ------------------------------------------------------------------
+    # 3. RSN colours (mirror your 3D scatter logic)
+    # ------------------------------------------------------------------
+    if len(network_labels) == 7:
+        # Schaefer-7 style
+        try:
+            seq_cmap = plt.get_cmap(network_cmap)
+        except Exception:
+            seq_cmap = plt.get_cmap("tab20")
+
+        shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
+        order_idx = [1, 0, 3, 2, 6, 5, 4]  # just for visual separation
+        net_colours = [None] * 7
+        for rank, net_idx in enumerate(order_idx):
+            net_colours[net_idx] = shades[rank]
+    else:
+        cmap = plt.get_cmap(network_cmap, len(network_labels))
+        net_colours = [cmap(i) for i in range(len(network_labels))]
+
+    # colours only for networks actually present (used later)
+    present_colours = [net_colours[int(n)] for n in uniq_nets]
+    present_labels = [network_labels[int(n)] for n in uniq_nets]
+
+    # ------------------------------------------------------------------
+    # 4. Matplotlib / SVG settings
+    # ------------------------------------------------------------------
+    mpl.rcParams["svg.fonttype"] = "none"
+    mpl.rcParams["text.usetex"] = False
+
+    fig, axes = plt.subplots(
+        1, n_arrays, figsize=(4.0 * n_arrays, 4.0), sharey=share_yaxis
+    )
+    if n_arrays == 1:
+        axes = [axes]
+
+    # ------------------------------------------------------------------
+    # 5. Plot per array
+    # ------------------------------------------------------------------
+    for idx, (arr, ax, title) in enumerate(zip(arrays, axes, array_labels)):
+        # stack values per network
+        data_by_net = [arr[networks0 == net] for net in uniq_nets]
+
+        if kind == "violin":
+            # violinplot expects list-of-1D arrays
+            v = ax.violinplot(
+                data_by_net,
+                positions=np.arange(n_nets) + 1,
+                showmeans=False,
+                showmedians=True,
+                showextrema=False,
+            )
+            # color each violin body
+            for body, c in zip(v["bodies"], present_colours):
+                body.set_facecolor(c)
+                body.set_edgecolor("k")
+                body.set_alpha(0.8)
+
+            # style median lines if present
+            if "cmedians" in v:
+                v["cmedians"].set_color("k")
+                v["cmedians"].set_linewidth(1.2)
+
+        elif kind == "bar":
+            means = [np.nanmean(vals) for vals in data_by_net]
+            stds = [np.nanstd(vals) for vals in data_by_net]
+            xpos = np.arange(n_nets) + 1
+            ax.bar(
+                xpos,
+                means,
+                yerr=stds,
+                color=present_colours,
+                edgecolor="k",
+                linewidth=0.7,
+                alpha=0.9,
+                capsize=3,
+            )
+        else:
+            raise ValueError("kind must be 'violin' or 'bar'.")
+
+        ax.set_title(title)
+        ax.set_xticks(np.arange(n_nets) + 1)
+        ax.set_xticklabels(present_labels, rotation=45, ha="right", fontsize=8)
+        # If y-axis is shared, label only first subplot; otherwise you may want labels on all
+        if share_yaxis:
+            if idx == 0:
+                ax.set_ylabel(y_label)
+        else:
+            ax.set_ylabel(y_label)
+
+    # ------------------------------------------------------------------
+    # 6. RSN legend (if useful)
+    # ------------------------------------------------------------------
+    handles = [
+        Line2D(
+            [0], [0], marker="s", linestyle="none",
+            markerfacecolor=c, markeredgecolor="k",
+            markersize=8, label=lab,
+        )
+        for c, lab in zip(present_colours, present_labels)
+    ]
+    axes[-1].legend(
+        handles=handles,
+        title="RSN",
+        bbox_to_anchor=(1.04, 1.0),
+        loc="upper left",
+        borderaxespad=0.0,
+    )
+
+    fig.tight_layout()
+
+    # ------------------------------------------------------------------
+    # 7. Save figure
+    # ------------------------------------------------------------------
+    if fname is None:
+        fname = f"{name}_{kind}.svg"
+    outpath = out_dir / fname
+    fig.savefig(outpath, bbox_inches="tight", format="svg")
+    plt.close(fig)
+
+    print("Saved:", outpath)
+    return str(outpath)
+
+
+
+def _fdr_bh(pvals: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Benjamini-Hochberg FDR correction.
+    """
+    p = np.asarray(pvals, float).ravel()
+    m = p.size
+    if m == 0:
+        return p.copy(), np.zeros_like(p, dtype=bool)
+
+    order = np.argsort(p)
+    ranked_p = p[order]
+    ranks = np.arange(1, m + 1, dtype=float)
+
+    q = ranked_p * m / ranks
+    q = np.minimum.accumulate(q[::-1])[::-1]
+    q = np.clip(q, 0, 1)
+
+    p_fdr = np.empty_like(q)
+    p_fdr[order] = q
+
+    significant = p_fdr < alpha
+    return p_fdr, significant
+
+
+
+def plot_rsn_distributions_by_network(
+    arrays: Sequence[np.ndarray],
+    out_dir: str | Path,
+    name: str = "RSN_netwise",
+    *,
+    atlas: str = "schaefer",
+    schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
+    schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+    network_labels: Optional[List[str]] = None,
+    array_labels: Optional[List[str]] = None,
+    kind: Literal["violin", "bar", "raincloud"] = "raincloud",
+    array_cmap: str = "tab10",
+    y_label: str = "Value",
+    fname: Optional[str] = None,
+    fdr_alpha: float = 0.05,
+) -> Tuple[str, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    For a set of parcel-wise arrays (e.g. deep/mid/sup), plot RSN-wise
+    distributions with one subplot per canonical network and run a one-way
+    ANOVA per RSN (arrays as groups), with FDR correction across networks.
+
+    Y-axis limits are shared across all subplots.
+
+    kind : {"violin", "bar", "raincloud"}
+        - "violin": one violin per array (condition) in each RSN.
+        - "bar":    bar + error bars per array.
+        - "raincloud": half-violin (KDE) + jittered raw points per array.
+    """
+    out_dir = Path(out_dir)
+    out_dir = out_dir / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # --------------------------------------------------------------
+    # 1. RSN assignments & labels (same logic as your 3D function)
+    # --------------------------------------------------------------
+    if atlas.lower() == "schaefer":
+        if schaefer_label_L is None or schaefer_label_R is None:
+            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
+
+        L_lab, L_map = _load_label_gii(schaefer_label_L)
+        R_lab, R_map = _load_label_gii(schaefer_label_R)
+        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
+        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
+
+        nets0 = []
+        for k in uL:
+            nets0.append(_schaefer7_from_name(L_map[k]))
+        for k in uR:
+            nets0.append(_schaefer7_from_name(R_map[k]))
+        networks0 = np.asarray(nets0, int)
+        N = networks0.size
+
+        if network_labels is None:
+            network_labels = [
+                "Visual", "Somatomotor", "Dorsal Attn",
+                "Ventral/Salience", "Limbic", "Control", "Default",
+            ]
+    else:
+        cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
+        networks0 = cats0 - 1
+        N = networks0.size
+
+        if network_labels is None:
+            network_labels = [
+                "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
+                "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
+                "Default", "Posterior-Multimodal",
+                "Ventral-Multimodal", "Orbito-Affective",
+            ]
+
+    # --------------------------------------------------------------
+    # 2. Check arrays & labels
+    # --------------------------------------------------------------
+    arrays = [np.asarray(a).reshape(-1) for a in arrays]
+    for i, a in enumerate(arrays):
+        if a.size != N:
+            raise ValueError(
+                f"Array {i} has length {a.size}, but atlas implies N={N} parcels."
+            )
+
+    n_arrays = len(arrays)
+    if array_labels is None:
+        array_labels = [f"Index {i+1}" for i in range(n_arrays)]
+    elif len(array_labels) != n_arrays:
+        raise ValueError("array_labels must have same length as arrays.")
+
+    uniq_nets = np.array(sorted(np.unique(networks0)))
+    n_nets = len(uniq_nets)
+
+    # --------------------------------------------------------------
+    # 3. Colours for arrays (conditions)
+    # --------------------------------------------------------------
+    cmap = plt.get_cmap(array_cmap, n_arrays)
+    array_colors = [cmap(i) for i in range(n_arrays)]
+
+    # --------------------------------------------------------------
+    # 4. Global y-limits (shared y-axis across subplots)
+    # --------------------------------------------------------------
+    all_vals = np.concatenate([a[np.isfinite(a)] for a in arrays])
+    if all_vals.size == 0:
+        raise ValueError("All values are NaN; cannot set y-axis.")
+
+    y_min = 0
+    y_max = float(np.nanmax(all_vals))
+    if y_min == y_max:
+        pad = 0.5 if y_min == 0 else 0.05 * abs(y_min)
+        y_min -= pad
+        y_max += pad
+
+    # --------------------------------------------------------------
+    # 5. Matplotlib defaults
+    # --------------------------------------------------------------
+    mpl.rcParams["svg.fonttype"] = "none"
+    mpl.rcParams["text.usetex"] = False
+
+    # Grid layout for RSNs
+    n_cols = min(4, n_nets)
+    n_rows = int(np.ceil(n_nets / n_cols))
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(3.0 * n_cols, 3.0 * n_rows),
+        squeeze=False,
+    )
+
+    F_vals = np.full(n_nets, np.nan, float)
+    p_raw = np.full(n_nets, np.nan, float)
+
+    # Shared x positions and x-limits
+    xpos = np.arange(n_arrays) + 1
+    x_min, x_max = 0.5, n_arrays + 0.5
+
+    # --------------------------------------------------------------
+    # 6. Loop over networks: plot + ANOVA
+    # --------------------------------------------------------------
+    for idx_net, net in enumerate(uniq_nets):
+        r = idx_net // n_cols
+        c = idx_net % n_cols
+        ax = axes[r, c]
+
+        # data per array (group) for this RSN
+        groups = []
+        for arr in arrays:
+            vals = arr[networks0 == net]
+            vals = vals[np.isfinite(vals)]
+            groups.append(vals)
+
+        # One-way ANOVA
+        try:
+            F, p = f_oneway(*groups)
+        except Exception:
+            F, p = np.nan, np.nan
+        F_vals[idx_net] = F
+        p_raw[idx_net] = p
+
+        # --- Plot type selection ---
+        if kind == "violin":
+            v = ax.violinplot(
+                groups,
+                positions=xpos,
+                showmeans=False,
+                showmedians=True,
+                showextrema=False,
+            )
+            for body, c_col in zip(v["bodies"], array_colors):
+                body.set_facecolor(c_col)
+                body.set_edgecolor("k")
+                body.set_alpha(0.8)
+            if "cmedians" in v:
+                v["cmedians"].set_color("k")
+                v["cmedians"].set_linewidth(1.2)
+
+        elif kind == "bar":
+            means = [np.nanmean(g) if g.size > 0 else np.nan for g in groups]
+            stds = [np.nanstd(g) if g.size > 1 else 0.0 for g in groups]
+            ax.bar(
+                xpos,
+                means,
+                yerr=stds,
+                color=array_colors,
+                edgecolor="k",
+                linewidth=0.7,
+                alpha=0.9,
+                capsize=3,
+            )
+
+        elif kind == "raincloud":
+            # Parameters for the raincloud look
+            max_width = 0.4     # half-violin width
+            jitter = 0.08       # x jitter for points
+            alpha_kde = 0.6
+            alpha_pts = 0.7
+
+            for j, (g_vals, color) in enumerate(zip(groups, array_colors), start=1):
+                if g_vals.size == 0:
+                    continue
+
+                # KDE for half-violin (if enough points)
+                if g_vals.size > 1 and np.nanstd(g_vals) > 0:
+                    try:
+                        kde = gaussian_kde(g_vals)
+                        y_grid = np.linspace(
+                            max(y_min, np.nanmin(g_vals)),
+                            min(y_max, np.nanmax(g_vals)),
+                            100,
+                        )
+                        density = kde(y_grid)
+                        if np.max(density) > 0:
+                            density = density / np.max(density) * max_width
+                            # Build half-violin polygon to the left of x=j
+                            x_left = j - density
+                            x_right = np.full_like(y_grid, j)
+                            x_poly = np.concatenate([x_left, x_right[::-1]])
+                            y_poly = np.concatenate([y_grid, y_grid[::-1]])
+                            ax.fill(
+                                x_poly,
+                                y_poly,
+                                color=color,
+                                alpha=alpha_kde,
+                                edgecolor="k",
+                                linewidth=0.5,
+                            )
+                    except Exception:
+                        # If KDE fails, just skip the violin shape
+                        pass
+
+                # Jittered raw points
+                x_jitter = j + (np.random.rand(g_vals.size) - 0.5) * 2 * jitter
+                ax.scatter(
+                    x_jitter,
+                    g_vals,
+                    color=color,
+                    alpha=alpha_pts,
+                    edgecolor="k",
+                    linewidth=0.3,
+                    s=10,
+                )
+
+                # Optional: median marker
+                med = np.nanmedian(g_vals)
+                ax.scatter(
+                    j + max_width * 0.6,
+                    med,
+                    color="k",
+                    marker="_",
+                    s=80,
+                    linewidths=1.2,
+                    zorder=3,
+                )
+
+        else:
+            raise ValueError("kind must be 'violin', 'bar', or 'raincloud'.")
+
+        # Shared x & y axes
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_xticks(xpos)
+        ax.set_xticklabels(array_labels, rotation=45, ha="right", fontsize=7)
+
+        if c == 0:
+            ax.set_ylabel(y_label)
+
+        net_label = network_labels[int(net)]
+        ax.set_title(net_label, fontsize=9)
+
+    # Hide any unused subplots
+    for idx in range(n_nets, n_rows * n_cols):
+        r = idx // n_cols
+        c = idx % n_cols
+        axes[r, c].axis("off")
+
+    # --------------------------------------------------------------
+    # 7. FDR correction across networks + annotate
+    # --------------------------------------------------------------
+    p_fdr, sig_mask = _fdr_bh(p_raw, alpha=fdr_alpha)
+
+    for idx_net, net in enumerate(uniq_nets):
+        r = idx_net // n_cols
+        c = idx_net % n_cols
+        ax = axes[r, c]
+
+        F = F_vals[idx_net]
+        p = p_raw[idx_net]
+        q = p_fdr[idx_net]
+        star = " *" if sig_mask[idx_net] else ""
+        txt = f"F={F:.2f}, p={p:.2g}\nq={q:.2g}{star}"
+        ax.text(
+            0.05,
+            0.95,
+            txt,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=7,
+            bbox=dict(boxstyle="round,pad=0.2", fc="w", ec="k", lw=0.4),
+        )
+
+    # Legend for arrays
+    handles = [
+        Line2D(
+            [0], [0],
+            marker="s", linestyle="none",
+            markerfacecolor=array_colors[i],
+            markeredgecolor="k",
+            markersize=8,
+            label=array_labels[i],
+        )
+        for i in range(n_arrays)
+    ]
+    fig.legend(
+        handles=handles,
+        title="Index",
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=min(n_arrays, 4),
+        fontsize=8,
+    )
+
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+
+    # --------------------------------------------------------------
+    # 8. Save figure
+    # --------------------------------------------------------------
+    if fname is None:
+        fname = f"{name}_{kind}_byNetwork.svg"
+    outpath = out_dir / fname
+    fig.savefig(outpath, bbox_inches="tight", format="svg")
+    plt.close(fig)
+
+    print("Saved:", outpath)
+    return str(outpath), F_vals, p_raw, p_fdr, sig_mask

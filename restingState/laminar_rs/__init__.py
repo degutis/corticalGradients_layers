@@ -58,6 +58,8 @@ from .plots_embedding import (
     plot_on_mmhcp_surface_multipleLayers,
     eigvecs_to_nifti,
     plot_two_dim_embedding_byNetwork,
+    plot_rsn_distributions,
+    plot_rsn_distributions_by_network,
 )
 
 # Graph metrics & network visualisations
@@ -90,6 +92,7 @@ from .reliability import (
 # Gradient-based analyses
 from .gradients import (
     run_gradient_analysis,
+    run_gradient_analysis_auto,
     run_gradient_analysis_affinity,
     inter_areal_dissimilarity,
     intra_areal_dissimilarity,
@@ -105,6 +108,12 @@ from .gradients import (
 from .flatmaps import (
     plotMatrix,
     plotFlatMap,
+)
+
+# Surface Map Plotting
+from .surface_maps import (
+    plotSurfaceMap,
+    plotSurfaceMap_LH_gradients,
 )
 
 # Schaefer-400 / RSN-7 network stats & spatial nulls
@@ -184,6 +193,8 @@ __all__ = [
     "plot_on_mmhcp_surface_multipleLayers",
     "eigvecs_to_nifti",
     "plot_two_dim_embedding_byNetwork",
+    "plot_rsn_distributions",
+    "plot_rsn_distributions_by_network",
 
     # Graph metrics
     "rich_club_sweep",
@@ -208,6 +219,7 @@ __all__ = [
 
     # Gradients
     "run_gradient_analysis",
+    "run_gradient_analysis_auto",
     "run_gradient_analysis_affinity",
     "inter_areal_dissimilarity",
     "intra_areal_dissimilarity",
@@ -221,6 +233,10 @@ __all__ = [
     # Flatmaps
     "plotMatrix",
     "plotFlatMap",
+
+    # Surface Maps
+    "plotSurfaceMap",
+    "plotSurfaceMap_LH_gradients",
 
     # Schaefer / RSN-7 stats
     "RSN7_NAMES",

@@ -22,7 +22,6 @@ from brainspace.gradient import GradientMaps
 from scipy.spatial.distance import pdist, squareform
 from sklearn.cluster import AgglomerativeClustering
 
-
 # ---------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------
@@ -90,6 +89,194 @@ def _equidistant_layer_indices(L: int) -> Tuple[int, int, int]:
 # ---------------------------------------------------------------------
 # Gradient estimation
 # ---------------------------------------------------------------------
+
+
+def run_gradient_analysis_auto(
+    conn_matrix: np.ndarray,
+    outputDir: str,
+    n_components: int | None = None,
+    max_components: int = 20,
+    var_threshold: float | None = None,
+    kernel: str = "cosine",
+    approach: str = "dm",
+    random_state: int = 0,
+    sparsity: float | None = 0.9,
+    scree_basename: str = "GradientScree",
+) -> Tuple[
+    np.ndarray,  # gradients (N × n_keep)
+    np.ndarray,  # lambdas (n_keep,)
+    np.ndarray,  # all_lambdas (max_components,)
+    np.ndarray,  # frac_explained (max_components,)
+    np.ndarray,  # cum_explained (max_components,)
+    int,         # n_keep
+]:
+    """
+    Run BrainSpace GradientMaps with automatic component selection and scree plot.
+
+    The function first fits up to `max_components` gradients, computes a
+    normalised eigenvalue spectrum (fraction explained, cumulative), saves
+    a scree plot, and then selects how many gradients to KEEP:
+
+    - If `n_components` is not None: hard override (clipped to max_components).
+    - Else if `var_threshold` is not None: keep the minimum number of
+      components whose cumulative fraction >= var_threshold.
+    - Else: keep all `max_components`.
+
+    Parameters
+    ----------
+    conn_matrix : np.ndarray
+        (N × N) connectivity / similarity matrix (e.g. supra-adjacency).
+    outputDir : str
+        Directory where the scree plot SVG is saved.
+    n_components : int or None
+        Manual override for how many gradients to RETURN (n_keep).
+    max_components : int
+        Number of components to FIT for the scree plot (upper bound).
+    var_threshold : float or None
+        Target cumulative fraction of the normalised spectrum, in (0, 1].
+        Ignored if `n_components` is provided.
+    kernel : {"cosine", "pearson", "normalized_angle", ...}
+        Kernel type passed to BrainSpace.
+    approach : {"dm", "le", "pca"}
+        Diffusion map ("dm"), Laplacian eigenmaps ("le"), or PCA.
+    random_state : int
+        RNG seed for reproducibility.
+    sparsity : float or None
+        Proportion of strongest affinities to retain. Pass None to disable.
+    scree_basename : str
+        Base name for the scree SVG file (without extension).
+
+    Returns
+    -------
+    gradients : np.ndarray
+        (N × n_keep) gradient coordinates.
+    lambdas : np.ndarray
+        (n_keep,) eigenvalues for the kept gradients.
+    all_lambdas : np.ndarray
+        (max_components,) eigenvalues for all fitted gradients.
+    frac_explained : np.ndarray
+        (max_components,) normalised “variance-like” contribution per component.
+    cum_explained : np.ndarray
+        (max_components,) cumulative fraction explained.
+    n_keep : int
+        Number of components actually returned.
+    """
+    os.makedirs(outputDir, exist_ok=True)
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(conn_matrix, cmap="PRGn")
+    plt.title("Adjacency matrix")
+    plt.savefig(
+        os.path.join(outputDir, "Adjacency_matrix.svg"),
+        bbox_inches="tight",
+        format="svg",
+    )
+    plt.close()
+
+    N = conn_matrix.shape[0]
+    max_components = int(min(max_components, N - 1))
+
+    # ------------------------------------------------------------------
+    # 1) Fit GradientMaps with a generous number of components
+    # ------------------------------------------------------------------
+    gm = GradientMaps(
+        kernel=kernel,
+        approach=approach,
+        n_components=max_components,
+        random_state=random_state,
+    )
+    gm.fit(conn_matrix, sparsity=sparsity)
+
+    all_lambdas = np.asarray(gm.lambdas_, dtype=float).reshape(-1)
+    # Just in case BrainSpace returns fewer than requested
+    max_components = all_lambdas.size
+
+    # ------------------------------------------------------------------
+    # 2) Turn eigenvalues into a normalised "variance-like" spectrum
+    # ------------------------------------------------------------------
+    appr = approach.lower()
+
+    if appr == "pca":
+        # PCA: lambdas_ already correspond to variance explained
+        scores = all_lambdas.copy()
+    elif appr.startswith("le"):
+        # Laplacian eigenmaps: smaller eigenvalues are more important
+        # Use inverse as an importance measure
+        eps = 1e-12
+        scores = 1.0 / (np.abs(all_lambdas) + eps)
+    else:
+        # Diffusion maps (dm) and other: use |lambda| as importance
+        scores = np.abs(all_lambdas)
+
+    total_score = scores.sum()
+    if total_score <= 0:
+        raise ValueError(
+            "Sum of eigenvalue scores is non-positive; cannot compute "
+            "fraction explained."
+        )
+
+    frac_explained = scores / total_score
+    cum_explained = np.cumsum(frac_explained)
+
+    # ------------------------------------------------------------------
+    # 3) Decide how many components to keep
+    # ------------------------------------------------------------------
+    if n_components is not None:
+        # Manual override
+        n_keep = int(np.clip(n_components, 1, max_components))
+    elif var_threshold is not None:
+        if not (0 < var_threshold <= 1):
+            raise ValueError("var_threshold must be in (0, 1].")
+        # First index where cumulative fraction >= threshold
+        n_keep = int(np.searchsorted(cum_explained, var_threshold) + 1)
+    else:
+        # Default: keep everything we fitted
+        n_keep = max_components
+
+    # ------------------------------------------------------------------
+    # 4) Scree plot (SVG, same style as your other QC plots)
+    # ------------------------------------------------------------------
+    mpl.rcParams["svg.fonttype"] = "none"
+    mpl.rcParams["text.usetex"] = False
+
+    x = np.arange(1, max_components + 1)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot(x, frac_explained * 100.0, "o-", label="Component")
+    ax.set_xlabel("Component")
+    ax.set_ylabel("Normalised eigenvalue [%]")
+    ax.set_title("Gradient scree plot")
+
+    ax2 = ax.twinx()
+    ax2.plot(x, cum_explained * 100.0, "s--", color="tab:orange",
+             label="Cumulative")
+    ax2.set_ylabel("Cumulative [%]")
+
+    # Vertical line for chosen n_keep
+    ax.axvline(n_keep, color="r", linestyle="--")
+    ax.text(
+        n_keep + 0.1,
+        ax.get_ylim()[1] * 0.9,
+        f"n_keep = {n_keep}\n({cum_explained[n_keep-1]*100:.1f}%)",
+        color="r",
+    )
+
+    # Combine legends from both axes
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2, loc="upper right")
+
+    scree_path = os.path.join(outputDir, f"{scree_basename}.svg")
+    fig.savefig(scree_path, bbox_inches="tight", format="svg")
+    plt.close(fig)
+
+    # ------------------------------------------------------------------
+    # 5) Truncate gradients and eigenvalues to n_keep
+    # ------------------------------------------------------------------
+    gradients = gm.gradients_[:, :n_keep]
+    lambdas = all_lambdas[:n_keep]
+
+    return gradients, lambdas, all_lambdas, frac_explained, cum_explained, n_keep
+
 
 
 def run_gradient_analysis(
@@ -251,7 +438,7 @@ def inter_areal_dissimilarity(
 
     # Visual QC: concatenated profile matrix
     plt.figure(figsize=(6, 6))
-    plt.imshow(P, cmap="viridis")
+    plt.imshow(P, cmap="PRGn")
     plt.title("ConcatMatrix P - inter areal dis")
     plt.savefig(
         os.path.join(outputDir, "ConcatMatrixP_inter.svg"),
@@ -276,14 +463,14 @@ def inter_areal_dissimilarity(
         [Dl.sum(axis=1) / (N - 1) for Dl in D_layers]
     )  # (L, N)
 
-    i_sup, i_mid, i_deep = _equidistant_layer_indices(L)
+    i_deep, i_mid, i_sup = _equidistant_layer_indices(L)
     distanceSum_sup = distanceSum_layers[i_sup]
     distanceSum_mid = distanceSum_layers[i_mid]
     distanceSum_deep = distanceSum_layers[i_deep]
 
     # Visual QC: distance matrix & overall mean-distance column
     plt.figure(figsize=(6, 6))
-    plt.imshow(D, cmap="viridis")
+    plt.imshow(D, cmap="magma")
     plt.title("Distance matrix - inter areal dis")
     plt.savefig(
         os.path.join(outputDir, "Matrix_interArealDis.svg"),
@@ -293,7 +480,7 @@ def inter_areal_dissimilarity(
     plt.close()
 
     plt.figure(figsize=(10, 10))
-    plt.imshow(distanceSum[:, np.newaxis], cmap="viridis")
+    plt.imshow(distanceSum[:, np.newaxis], cmap="magma")
     plt.title("Distance sum - inter areal dis")
     plt.savefig(
         os.path.join(outputDir, "Matrix_interArealDisSum.svg"),
@@ -364,7 +551,7 @@ def intra_areal_dissimilarity(
 
         # Debug plot: Ubar
         plt.figure(figsize=(6, 6))
-        plt.imshow(Ubar, cmap="viridis")
+        plt.imshow(Ubar, cmap="PRGn")
         plt.title("Ubar - intra areal dis")
         plt.savefig(
             os.path.join(outputDir, "Matrix_intraArealDis.svg"),
@@ -383,7 +570,7 @@ def intra_areal_dissimilarity(
 
         # Overview heatmap: layers × parcels
         plt.figure(figsize=(8, 6))
-        plt.imshow(D_layers, aspect="auto", cmap="viridis")
+        plt.imshow(D_layers, aspect="auto", cmap="cividis")
         plt.title("Per-layer distances to mean direction (layers × parcels)")
         plt.ylabel("Layer")
         plt.xlabel("Parcel")
@@ -396,7 +583,7 @@ def intra_areal_dissimilarity(
 
         # Column view
         plt.figure(figsize=(10, 10))
-        plt.imshow(d_intraMean[:, np.newaxis], cmap="viridis")
+        plt.imshow(d_intraMean[:, np.newaxis], cmap="cividis")
         plt.title("D_intraMean - intra areal dis")
         plt.savefig(
             os.path.join(outputDir, "Matrix_mean_intraArealDis.svg"),
@@ -406,10 +593,11 @@ def intra_areal_dissimilarity(
         plt.close()
 
         # Equidistant layers interpreted as sup/mid/deep
-        i_sup, i_mid, i_deep = _equidistant_layer_indices(L)
+        i_deep, i_mid, i_sup = _equidistant_layer_indices(L)
         d_superficial = D_layers[i_sup]
         d_middle = D_layers[i_mid]
         d_deep = D_layers[i_deep]
+
 
         # Optional: save each selected layer
         for label, vec in [
@@ -418,7 +606,7 @@ def intra_areal_dissimilarity(
             ("deep", d_deep),
         ]:
             plt.figure(figsize=(10, 10))
-            plt.imshow(vec[:, np.newaxis], cmap="viridis")
+            plt.imshow(vec[:, np.newaxis], cmap="cividis")
             plt.title(f"D_{label} - intra areal dis")
             plt.savefig(
                 os.path.join(outputDir, f"Matrix_{label}_intraArealDis.svg"),
@@ -427,7 +615,7 @@ def intra_areal_dissimilarity(
             )
             plt.close()
 
-        return d_intraMean, d_superficial, d_middle, d_deep
+        return d_intraMean, d_deep, d_middle, d_superficial
 
     elif mode == "pairwise":
         if L < 2:

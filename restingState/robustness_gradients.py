@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-import scipy.io
 import matplotlib.pyplot as plt
 
 import laminar_rs as lrs
