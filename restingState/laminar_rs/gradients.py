@@ -470,7 +470,7 @@ def inter_areal_dissimilarity(
 
     # Visual QC: distance matrix & overall mean-distance column
     plt.figure(figsize=(6, 6))
-    plt.imshow(D, cmap="magma")
+    plt.imshow(D, cmap="viridis")
     plt.title("Distance matrix - inter areal dis")
     plt.savefig(
         os.path.join(outputDir, "Matrix_interArealDis.svg"),
@@ -480,7 +480,7 @@ def inter_areal_dissimilarity(
     plt.close()
 
     plt.figure(figsize=(10, 10))
-    plt.imshow(distanceSum[:, np.newaxis], cmap="magma")
+    plt.imshow(distanceSum[:, np.newaxis], cmap="viridis")
     plt.title("Distance sum - inter areal dis")
     plt.savefig(
         os.path.join(outputDir, "Matrix_interArealDisSum.svg"),

@@ -5,29 +5,27 @@ Schaefer-400 / RSN-7 network statistics with spatial null models.
 This module provides:
 - Bookkeeping for Schaefer-400 parcels on fs_LR 32k
 - Safe parcel ↔ vertex mapping helpers
-- Network-wise ANOVAs (per layer)
-- Network × layer interaction tests
-- Spin and Moran Spectral Randomization (MSR) nulls
+- Network-wise ANOVAs (per layer) with spin nulls
+- Network × layer interaction tests with spin nulls
+- Spin-based tests for (partial) correlations using ENIGMA's API
 - CSV savers for tidy outputs
 """
 
 from __future__ import annotations
 
 import csv
-from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from brainspace.datasets import load_conte69
-from brainspace.mesh import mesh_elements as me
-from brainspace.null_models import MoranRandomization, SpinPermutations
+from brainspace.null_models import SpinPermutations
+from enigmatoolbox.permutation_testing import (
+    rotate_parcellation,
+    perm_sphere_p,
+)
 from scipy.stats import f_oneway
-
-try:
-    import pandas as pd  # optional
-except ImportError:  # pragma: no cover - optional dependency
-    pd = None  # type: ignore
-
 
 # ---------------------------------------------------------------------
 # Constants
@@ -42,6 +40,14 @@ RSN7_NAMES: List[str] = [
     "Control",
     "Default",
 ]
+
+# Defaults for fs_LR Schaefer-400 label GIFTIs
+_DEFAULT_SCHAEFER_L = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii"
+_DEFAULT_SCHAEFER_R = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii"
+
+# Caches for centroids and permutations (so we don’t recompute every time)
+_SCHAEFER400_CENTROIDS_CACHE: Dict[Tuple[str, str], Tuple[np.ndarray, np.ndarray]] = {}
+_SCHAEFER400_PERM_CACHE: Dict[Tuple[str, str, int, int | None], np.ndarray] = {}
 
 
 # ---------------------------------------------------------------------
@@ -93,8 +99,8 @@ def _schaefer7_from_name(name: str) -> int:
 
 
 def build_schaefer400_bookkeeping(
-    schaefer_label_L: str,
-    schaefer_label_R: str,
+    schaefer_label_L: str = _DEFAULT_SCHAEFER_L,
+    schaefer_label_R: str = _DEFAULT_SCHAEFER_R,
 ) -> Tuple[
     np.ndarray,
     np.ndarray,
@@ -252,7 +258,7 @@ def vertices_to_parcels(
 
 
 # ---------------------------------------------------------------------
-# Stats helpers
+# Stats helpers (ANOVAs)
 # ---------------------------------------------------------------------
 
 
@@ -350,23 +356,20 @@ def _F_interaction_general(
 
 
 # ---------------------------------------------------------------------
-# Layer-wise one-way ANOVAs (2–4 inputs), with SPIN or MSR nulls
+# Layer-wise one-way ANOVAs (2–4 inputs), SPIN nulls (BrainSpace)
 # ---------------------------------------------------------------------
 
 
 def layerwise_network_anova(
     D_layers: Sequence[np.ndarray],
     layer_names: Sequence[str] | None = None,
-    method: str = "spin",  # 'spin' or 'msr'
     schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
     schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
     n_perm: int = 10_000,
     random_state: int = 0,
-    batch_size: int = 50,
-    spin_unique: bool = False,
 ) -> Tuple[Dict[str, Mapping[str, object]], List[str]]:
     """
-    Layer-wise one-way ANOVAs (7 RSNs) with spatial nulls.
+    Layer-wise one-way ANOVAs (7 RSNs) with ENIGMA-style spin nulls.
 
     Parameters
     ----------
@@ -374,33 +377,25 @@ def layerwise_network_anova(
         2..4 parcel maps, each length 400 in [uL,uR] order.
     layer_names : sequence of str or None
         Names for the layers; default: "Layer1", "Layer2", ...
-    method : {'spin', 'msr'}
-        Spatial null: spherical spin or Moran spectral randomization.
     schaefer_label_L, schaefer_label_R : str
-        Paths to Schaefer-400 fs_LR label GIFTIs.
+        Paths to Schaefer-400 fs_LR label GIFTIs (for bookkeeping + centroids).
     n_perm : int
-        Number of permutations / surrogates.
+        Number of permutations / rotations.
     random_state : int
-        RNG seed.
-    batch_size : int
-        Batch size for spin permutations.
-    spin_unique : bool
-        Whether to enforce unique spins (SpinPermutations).
+        RNG seed passed to ENIGMA rotate_parcellation helper.
 
     Returns
     -------
     results : dict
         {layer_name -> {F_obs, p_perm, net_means(7,), net_ns(7,)}}.
-        p_perm is p_spin (method='spin') or p_msr (method='msr').
+        p_perm is ENIGMA-style p_spin for the ANOVA F.
     rsn_names : list of str
         RSN-7 network names in order.
     """
     if not (2 <= len(D_layers) <= 4):
-        raise ValueError(
-            "D_layers must have 2, 3, or 4 maps for the layer-wise ANOVAs."
-        )
+        raise ValueError("D_layers must have 2, 3, or 4 maps for the layer-wise ANOVAs.")
 
-    # Atlas bookkeeping + spheres
+    # Atlas bookkeeping (RSN labels etc.)
     (
         uL,
         uR,
@@ -409,196 +404,98 @@ def layerwise_network_anova(
         parcel_verts_R,
         mw_L,
         mw_R,
-    ) = build_schaefer400_bookkeeping(
-        schaefer_label_L, schaefer_label_R
-    )
-    sphere_lh, sphere_rh = load_conte69(as_sphere=True)
-    nL, nR = sphere_lh.n_points, sphere_rh.n_points
+    ) = build_schaefer400_bookkeeping(schaefer_label_L, schaefer_label_R)
+    n_parc = len(uL) + len(uR)
 
-    # Sanitize inputs
+    # Layer names
     Lnames = (
         list(layer_names)
         if layer_names is not None
         else [f"Layer{i+1}" for i in range(len(D_layers))]
     )
     if len(Lnames) != len(D_layers):
-        raise ValueError(
-            "layer_names length must match D_layers length."
-        )
+        raise ValueError("layer_names length must match D_layers length.")
 
+    # Sanitize layer data, precompute masks, F_obs, and network means
     D_layers_arr: List[np.ndarray] = []
-    for i, D in enumerate(D_layers):
-        D = np.asarray(D, float).squeeze()
-        if D.shape[0] != (len(uL) + len(uR)):
-            raise ValueError(
-                f"{Lnames[i]} length {D.size} != 400; ensure [uL,uR] order."
-            )
-        D_layers_arr.append(D)
-
-    # Precompute per-layer vertex maps + observed F
-    vLs: List[np.ndarray] = []
-    vRs: List[np.ndarray] = []
+    masks: List[np.ndarray] = []
     F_obs: List[float] = []
     net_means: List[np.ndarray] = []
 
-    for D in D_layers_arr:
-        vL, vR = parcel_to_vertices(
-            D,
-            uL,
-            uR,
-            parcel_verts_L,
-            parcel_verts_R,
-            nL,
-            nR,
-            mw_L,
-            mw_R,
-        )
-        vLs.append(vL)
-        vRs.append(vR)
+    for i, (name, D) in enumerate(zip(Lnames, D_layers)):
+        D = np.asarray(D, float).squeeze()
+        if D.shape[0] != n_parc:
+            raise ValueError(
+                f"{name}: expected length {n_parc} in [uL,uR] order, got {D.size}."
+            )
+        D_layers_arr.append(D)
 
-        F_obs.append(anova_F_by_network(D, networks0))
-        net_means.append(
-            np.array([D[networks0 == k].mean() for k in range(7)])
-        )
+        mask = np.isfinite(D)
+        if mask.sum() < 5:
+            raise ValueError(f"{name}: fewer than 5 finite parcels after masking.")
+        masks.append(mask)
 
+        F_obs_i = anova_F_by_network(D[mask], networks0[mask])
+        F_obs.append(F_obs_i)
+
+        net_means_i = np.array(
+            [np.nanmean(D[networks0 == k]) for k in range(7)],
+            dtype=float,
+        )
+        net_means.append(net_means_i)
+
+    # Network sample sizes (same for all layers)
     net_ns = np.array(
-        [int(np.sum(networks0 == k)) for k in range(7)], dtype=int
+        [int(np.sum(networks0 == k)) for k in range(7)],
+        dtype=int,
     )
+
+    # ENIGMA-style spin permutations at parcel level
+    perm_id = _get_schaefer400_perm_id(
+        n_perm=n_perm,
+        schaefer_label_L=schaefer_label_L,
+        schaefer_label_R=schaefer_label_R,
+        random_state=random_state,
+    )
+    # perm_id shape: (n_parc, n_perm), int indices into 400-length vectors
+
+    counts = np.zeros(len(D_layers_arr), dtype=int)
+
+    for j in range(n_perm):
+        idx = perm_id[:, j].astype(int)
+        for li, (D, mask) in enumerate(zip(D_layers_arr, masks)):
+            D_perm = D[idx][mask]
+            F_perm = anova_F_by_network(D_perm, networks0[mask])
+            if F_perm >= F_obs[li]:
+                counts[li] += 1
+
     results: Dict[str, Mapping[str, object]] = {}
-
-    method_l = method.lower()
-    if method_l == "spin":
-        rng = np.random.RandomState(random_state)
-        counts = np.zeros(len(D_layers_arr), dtype=int)
-        effN = np.zeros(len(D_layers_arr), dtype=int)
-
-        filled = 0
-        while filled < n_perm:
-            m = min(batch_size, n_perm - filled)
-            sp = SpinPermutations(
-                n_rep=m,
-                random_state=int(rng.randint(1e9)),
-                unique=spin_unique,
-            )
-            sp.fit(sphere_lh, points_rh=sphere_rh)
-
-            # For each layer, compute m spins
-            rotL_list: List[np.ndarray] = []
-            rotR_list: List[np.ndarray] = []
-            for vL, vR in zip(vLs, vRs):
-                rL, rR = sp.randomize(vL, vR)  # (m,nL), (m,nR)
-                rotL_list.append(rL)
-                rotR_list.append(rR)
-
-            for i in range(m):
-                for li, (D, rL, rR) in enumerate(
-                    zip(D_layers_arr, rotL_list, rotR_list)
-                ):
-                    v_full = np.concatenate([rL[i], rR[i]])
-                    Dp = vertices_to_parcels(
-                        v_full,
-                        nL,
-                        parcel_verts_L,
-                        parcel_verts_R,
-                        len(uL),
-                    )
-                    mask = np.isfinite(D) & np.isfinite(Dp)
-                    if mask.sum() < 5:
-                        continue
-                    Fp = anova_F_by_network(Dp[mask], networks0[mask])
-                    Fobs = anova_F_by_network(
-                        D[mask], networks0[mask]
-                    )
-                    counts[li] += int(Fp >= Fobs)
-                    effN[li] += 1
-            filled += m
-
-        for li, name in enumerate(Lnames):
-            p = (counts[li] + 1) / (effN[li] + 1)
-            results[name] = dict(
-                F_obs=float(F_obs[li]),
-                p_perm=float(p),
-                net_means=net_means[li],
-                net_ns=net_ns,
-            )
-
-    elif method_l == "msr":
-        # Build MSR weights
-        wL = me.get_ring_distance(sphere_lh, n_ring=1)
-        wL.data **= -1
-        wR = me.get_ring_distance(sphere_rh, n_ring=1)
-        wR.data **= -1
-
-        msrL = MoranRandomization(
-            n_rep=n_perm,
-            joint=False,
-            tol=1e-6,
-            random_state=random_state,
+    for li, name in enumerate(Lnames):
+        p = (counts[li] + 1) / (n_perm + 1)
+        results[name] = dict(
+            F_obs=float(F_obs[li]),
+            p_perm=float(p),
+            net_means=net_means[li],
+            net_ns=net_ns,
         )
-        msrR = MoranRandomization(
-            n_rep=n_perm,
-            joint=False,
-            tol=1e-6,
-            random_state=random_state,
-        )
-        msrL.fit(wL)
-        msrR.fit(wR)
-
-        for li, (name, vL, vR, D) in enumerate(
-            zip(Lnames, vLs, vRs, D_layers_arr)
-        ):
-            rotL = msrL.randomize(vL)  # (n_perm,nL)
-            rotR = msrR.randomize(vR)  # (n_perm,nR)
-            count = 0
-            for i in range(n_perm):
-                v_full = np.concatenate([rotL[i], rotR[i]])
-                Dp = vertices_to_parcels(
-                    v_full,
-                    nL,
-                    parcel_verts_L,
-                    parcel_verts_R,
-                    len(uL),
-                )
-                mask = np.isfinite(D) & np.isfinite(Dp)
-                if mask.sum() < 5:
-                    continue
-                Fp = anova_F_by_network(Dp[mask], networks0[mask])
-                Fobs = anova_F_by_network(
-                    D[mask], networks0[mask]
-                )
-                count += int(Fp >= Fobs)
-            p = (count + 1) / (n_perm + 1)
-            results[name] = dict(
-                F_obs=float(F_obs[li]),
-                p_perm=float(p),
-                net_means=net_means[li],
-                net_ns=net_ns,
-            )
-
-    else:
-        raise ValueError("method must be 'spin' or 'msr'.")
 
     return results, RSN7_NAMES
 
-
 # ---------------------------------------------------------------------
-# Network × Layer interaction (2 or 3 layers), SPIN or MSR
+# Network × Layer interaction (2 or 3 layers), SPIN (BrainSpace)
 # ---------------------------------------------------------------------
 
 
 def network_layer_interaction_general(
     D_layers: Sequence[np.ndarray],
     layer_names: Sequence[str] | None = None,
-    method: str = "spin",  # 'spin' or 'msr'
     schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
     schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
     n_perm: int = 10_000,
     random_state: int = 0,
-    batch_size: int = 50,
-    spin_unique: bool = False,
 ) -> Mapping[str, object]:
     """
-    Network × layer interaction with spatial nulls.
+    Network × layer interaction with ENIGMA-style spin nulls.
 
     Parameters
     ----------
@@ -606,18 +503,12 @@ def network_layer_interaction_general(
         2 or 3 parcel maps (length 400).
     layer_names : sequence of str or None
         Layer names; defaults to "Layer1", "Layer2", ...
-    method : {'spin', 'msr'}
-        Spatial null (spins or Moran SR).
     schaefer_label_L, schaefer_label_R : str
         Paths to Schaefer-400 fs_LR label GIFTIs.
     n_perm : int
-        Number of permutations / surrogates.
+        Number of rotations.
     random_state : int
-        RNG seed.
-    batch_size : int
-        Batch size for spins.
-    spin_unique : bool
-        Enforce unique spins.
+        RNG seed for ENIGMA rotate_parcellation helper.
 
     Returns
     -------
@@ -628,13 +519,8 @@ def network_layer_interaction_general(
             net_ns (7,),
             layer_names (list of str)
     """
-    if not isinstance(D_layers, (list, tuple)) or len(D_layers) not in (
-        2,
-        3,
-    ):
-        raise ValueError(
-            "D_layers must be a list/tuple of length 2 or 3 for interaction."
-        )
+    if not isinstance(D_layers, (list, tuple)) or len(D_layers) not in (2, 3):
+        raise ValueError("D_layers must be a list/tuple of length 2 or 3 for interaction.")
 
     L = len(D_layers)
     layer_names = (
@@ -643,7 +529,7 @@ def network_layer_interaction_general(
         else [f"Layer{i+1}" for i in range(L)]
     )
 
-    # Atlas + spheres
+    # Atlas bookkeeping (RSN labels etc.)
     (
         uL,
         uR,
@@ -652,170 +538,61 @@ def network_layer_interaction_general(
         parcel_verts_R,
         mw_L,
         mw_R,
-    ) = build_schaefer400_bookkeeping(
-        schaefer_label_L, schaefer_label_R
-    )
-    sphere_lh, sphere_rh = load_conte69(as_sphere=True)
-    nL, nR = sphere_lh.n_points, sphere_rh.n_points
+    ) = build_schaefer400_bookkeeping(schaefer_label_L, schaefer_label_R)
+    n_parc = len(uL) + len(uR)
 
-    # Sanitize and vertexize
+    # Sanitize data
     Y: List[np.ndarray] = []
-    vLs: List[np.ndarray] = []
-    vRs: List[np.ndarray] = []
-
     for idx, D in enumerate(D_layers):
         D = np.asarray(D, float).squeeze()
-        if D.shape[0] != (len(uL) + len(uR)):
-            raise ValueError(
-                f"Layer {idx}: expected length 400 with [uL,uR] order."
-            )
+        if D.shape[0] != n_parc:
+            raise ValueError(f"Layer {idx}: expected length {n_parc} with [uL,uR] order.")
         Y.append(D)
-        vL, vR = parcel_to_vertices(
-            D,
-            uL,
-            uR,
-            parcel_verts_L,
-            parcel_verts_R,
-            nL,
-            nR,
-            mw_L,
-            mw_R,
-        )
-        vLs.append(vL)
-        vRs.append(vR)
 
-    F_obs, df1, df2 = _F_interaction_general(Y, networks0)
+    # Global mask: parcels must be finite in all layers
+    mask = np.ones(n_parc, dtype=bool)
+    for D in Y:
+        mask &= np.isfinite(D)
+    if mask.sum() < 10:
+        raise ValueError("Fewer than 10 parcels with finite data across all layers.")
 
-    method_l = method.lower()
-    if method_l == "spin":
-        rng = np.random.RandomState(random_state)
-        exceed = 0
-        effN = 0
-        filled = 0
+    networks_eff = networks0[mask]
+    Y_eff = [D[mask] for D in Y]
 
-        while filled < n_perm:
-            m = min(batch_size, n_perm - filled)
-            sp = SpinPermutations(
-                n_rep=m,
-                random_state=int(rng.randint(1e9)),
-                unique=spin_unique,
-            )
-            sp.fit(sphere_lh, points_rh=sphere_rh)
+    # Observed interaction F
+    F_obs, df1, df2 = _F_interaction_general(Y_eff, networks_eff)
 
-            rotL_list: List[np.ndarray] = []
-            rotR_list: List[np.ndarray] = []
-            for vL, vR in zip(vLs, vRs):
-                rL, rR = sp.randomize(vL, vR)
-                rotL_list.append(rL)
-                rotR_list.append(rR)
+    # ENIGMA-style spin permutations (same spins applied to all layers)
+    perm_id = _get_schaefer400_perm_id(
+        n_perm=n_perm,
+        schaefer_label_L=schaefer_label_L,
+        schaefer_label_R=schaefer_label_R,
+        random_state=random_state,
+    )
+    # perm_id shape: (n_parc, n_perm)
 
-            for i in range(m):
-                Dperm_layers: List[np.ndarray] = []
-                for rL, rR in zip(rotL_list, rotR_list):
-                    v_full = np.concatenate([rL[i], rR[i]])
-                    Dp = vertices_to_parcels(
-                        v_full,
-                        nL,
-                        parcel_verts_L,
-                        parcel_verts_R,
-                        len(uL),
-                    )
-                    Dperm_layers.append(Dp)
+    exceed = 0
+    for j in range(n_perm):
+        idx = perm_id[:, j].astype(int)
+        Y_perm_eff: List[np.ndarray] = []
+        for D in Y:
+            D_perm = D[idx][mask]
+            Y_perm_eff.append(D_perm)
 
-                # Mask fairness: drop parcels NaN in ANY observed or perm layer
-                mask = np.ones(Y[0].shape[0], dtype=bool)
-                for D in Y:
-                    mask &= np.isfinite(D)
-                for Dp in Dperm_layers:
-                    mask &= np.isfinite(Dp)
-                if mask.sum() < 10:
-                    continue
+        F_perm, _, _ = _F_interaction_general(Y_perm_eff, networks_eff)
+        if F_perm >= F_obs:
+            exceed += 1
 
-                Fp, _, _ = _F_interaction_general(
-                    [Dp[mask] for Dp in Dperm_layers], networks0[mask]
-                )
-                Fobs_masked, _, _ = _F_interaction_general(
-                    [D[mask] for D in Y], networks0[mask]
-                )
-                exceed += int(Fp >= Fobs_masked)
-                effN += 1
-            filled += m
+    p_perm = (exceed + 1) / (n_perm + 1)
 
-        p_perm = (exceed + 1) / (effN + 1)
-
-    elif method_l == "msr":
-        # Build MSR weights
-        wL = me.get_ring_distance(sphere_lh, n_ring=1)
-        wL.data **= -1
-        wR = me.get_ring_distance(sphere_rh, n_ring=1)
-        wR.data **= -1
-
-        # Joint randomization across layers preserves cross-layer dependence
-        msrL = MoranRandomization(
-            n_rep=n_perm,
-            joint=True,
-            tol=1e-6,
-            random_state=random_state,
-        )
-        msrR = MoranRandomization(
-            n_rep=n_perm,
-            joint=True,
-            tol=1e-6,
-            random_state=random_state,
-        )
-        msrL.fit(wL)
-        msrR.fit(wR)
-
-        VL = np.column_stack(vLs)  # (nL, L)
-        VR = np.column_stack(vRs)  # (nR, L)
-        rotL = msrL.randomize(VL)  # (n_perm, nL, L)
-        rotR = msrR.randomize(VR)  # (n_perm, nR, L)
-
-        exceed = 0
-        for i in range(n_perm):
-            Dperm_layers: List[np.ndarray] = []
-            for l in range(L):
-                v_full = np.concatenate(
-                    [rotL[i, :, l], rotR[i, :, l]]
-                )
-                Dp = vertices_to_parcels(
-                    v_full,
-                    nL,
-                    parcel_verts_L,
-                    parcel_verts_R,
-                    len(uL),
-                )
-                Dperm_layers.append(Dp)
-
-            mask = np.ones(Y[0].shape[0], dtype=bool)
-            for D in Y:
-                mask &= np.isfinite(D)
-            for Dp in Dperm_layers:
-                mask &= np.isfinite(Dp)
-            if mask.sum() < 10:
-                continue
-
-            Fp, _, _ = _F_interaction_general(
-                [Dp[mask] for Dp in Dperm_layers], networks0[mask]
-            )
-            Fobs_m, _, _ = _F_interaction_general(
-                [D[mask] for D in Y], networks0[mask]
-            )
-            exceed += int(Fp >= Fobs_m)
-        p_perm = (exceed + 1) / (n_perm + 1)
-
-    else:
-        raise ValueError("method must be 'spin' or 'msr'.")
-
-    # Cell means and counts
+    # Cell means and counts (using original, unmasked maps with NaN-safe means)
     means_by_net_by_layer = np.zeros((7, L), float)
     for l, D in enumerate(Y):
         for k in range(7):
-            means_by_net_by_layer[k, l] = float(
-                np.nanmean(D[networks0 == k])
-            )
+            means_by_net_by_layer[k, l] = float(np.nanmean(D[networks0 == k]))
     net_ns = np.array(
-        [int(np.sum(networks0 == k)) for k in range(7)], dtype=int
+        [int(np.sum(networks0 == k)) for k in range(7)],
+        dtype=int,
     )
 
     return dict(
@@ -828,9 +605,242 @@ def network_layer_interaction_general(
         layer_names=list(layer_names),
     )
 
+# ---------------------------------------------------------------------
+# ENIGMA-style SPIN for (partial) correlations on Schaefer-400
+# ---------------------------------------------------------------------
+
+
+def _get_schaefer400_centroids(
+    schaefer_label_L: str = _DEFAULT_SCHAEFER_L,
+    schaefer_label_R: str = _DEFAULT_SCHAEFER_R,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute (and cache) Schaefer-400 parcel centroids on the Conte69 sphere.
+
+    Returns
+    -------
+    coord_l, coord_r : np.ndarray, shape (n_parc_L, 3), (n_parc_R, 3)
+    """
+    key = (schaefer_label_L, schaefer_label_R)
+    if key in _SCHAEFER400_CENTROIDS_CACHE:
+        return _SCHAEFER400_CENTROIDS_CACHE[key]
+
+    (
+        uL,
+        uR,
+        _networks0,
+        parcel_verts_L,
+        parcel_verts_R,
+        _mw_L,
+        _mw_R,
+    ) = build_schaefer400_bookkeeping(
+        schaefer_label_L, schaefer_label_R
+    )
+    sphere_lh, sphere_rh = load_conte69(as_sphere=True)
+
+    # BrainSpace surfaces are BSPolyData; coordinates are in .Points
+    coords_l = []
+    for idxs in parcel_verts_L:
+        coords_l.append(np.mean(sphere_lh.Points[idxs, :], axis=0))
+    coords_r = []
+    for idxs in parcel_verts_R:
+        coords_r.append(np.mean(sphere_rh.Points[idxs, :], axis=0))
+
+    coord_l = np.asarray(coords_l, float)
+    coord_r = np.asarray(coords_r, float)
+
+    _SCHAEFER400_CENTROIDS_CACHE[key] = (coord_l, coord_r)
+    return coord_l, coord_r
+
+
+def _get_schaefer400_perm_id(
+    n_perm: int,
+    schaefer_label_L: str = _DEFAULT_SCHAEFER_L,
+    schaefer_label_R: str = _DEFAULT_SCHAEFER_R,
+    random_state: int | None = 0,
+) -> np.ndarray:
+    """
+    Get (and cache) ENIGMA-style spin permutations for Schaefer-400.
+
+    Uses enigmatoolbox.permutation_testing.rotate_parcellation under a
+    controlled NumPy RNG seed to make results reproducible.
+    """
+    key = (schaefer_label_L, schaefer_label_R, n_perm, random_state)
+    if key in _SCHAEFER400_PERM_CACHE:
+        return _SCHAEFER400_PERM_CACHE[key]
+
+    coord_l, coord_r = _get_schaefer400_centroids(
+        schaefer_label_L, schaefer_label_R
+    )
+
+    # Control numpy RNG so permutations depend only on `random_state`
+    if random_state is not None:
+        state = np.random.get_state()
+        np.random.seed(random_state)
+        try:
+            perm_id = rotate_parcellation(coord_l, coord_r, nrot=n_perm)
+        finally:
+            np.random.set_state(state)
+    else:
+        perm_id = rotate_parcellation(coord_l, coord_r, nrot=n_perm)
+
+    perm_id = np.asarray(perm_id, int)
+    _SCHAEFER400_PERM_CACHE[key] = perm_id
+    return perm_id
+
+
+def p_spin_corr_schaefer400(
+    x: np.ndarray,
+    y: np.ndarray,
+    n_perm: int = 10_000,
+    corr_type: str = "pearson",
+    schaefer_label_L: str = _DEFAULT_SCHAEFER_L,
+    schaefer_label_R: str = _DEFAULT_SCHAEFER_R,
+    random_state: int | None = 0,
+) -> Tuple[float, float]:
+    """
+    ENIGMA-style spin permutation test for correlation on Schaefer-400.
+
+    This is a thin wrapper around:
+      - rotate_parcellation (to get `perm_id`)
+      - perm_sphere_p (to get the spin p-value)
+
+    Parameters
+    ----------
+    x, y : array-like, shape (400,)
+        Schaefer-400 parcel data in [LH parcels, RH parcels] order.
+        Must be finite (no NaNs).
+    n_perm : int
+        Number of spin rotations.
+    corr_type : {'pearson', 'spearman'}
+        Correlation type for empirical and null correlations.
+    schaefer_label_L, schaefer_label_R : str
+        Paths to Schaefer-400 fs_LR label GIFTIs.
+    random_state : int or None
+        RNG seed for rotations. If None, use global NumPy RNG.
+
+    Returns
+    -------
+    r_emp : float
+        Empirical correlation between x and y.
+    p_spin : float
+        Spin-based p-value from ENIGMA's perm_sphere_p.
+    """
+    x = np.asarray(x, float).squeeze()
+    y = np.asarray(y, float).squeeze()
+
+    if x.shape != y.shape:
+        raise ValueError("x and y must have the same shape.")
+    if x.ndim != 1:
+        raise ValueError("x and y must be 1D vectors.")
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("x and y must be finite (no NaNs or infs).")
+
+    # Empirical correlation
+    r_emp = float(np.corrcoef(x, y)[0, 1])
+
+    # Spin permutations via ENIGMA
+    perm_id = _get_schaefer400_perm_id(
+        n_perm,
+        schaefer_label_L=schaefer_label_L,
+        schaefer_label_R=schaefer_label_R,
+        random_state=random_state,
+    )
+
+    p_spin = float(
+        perm_sphere_p(x, y, perm_id, corr_type=corr_type, null_dist=False)
+    )
+    return r_emp, p_spin
+
+
+def p_spin_partial_corr_schaefer400(
+    x: np.ndarray,
+    y: np.ndarray,
+    Z: np.ndarray,
+    n_perm: int = 10_000,
+    corr_type: str = "pearson",
+    schaefer_label_L: str = _DEFAULT_SCHAEFER_L,
+    schaefer_label_R: str = _DEFAULT_SCHAEFER_R,
+    random_state: int | None = 0,
+) -> Tuple[float, float]:
+    """
+    Spin permutation test for partial correlation on Schaefer-400.
+
+    We:
+      1. Regress out Z from x and y (multiple regression with intercept)
+      2. Compute partial correlation r(x, y | Z) from residuals
+      3. Feed residuals into ENIGMA's perm_sphere_p with Schaefer-400 spins
+
+    Parameters
+    ----------
+    x, y : array-like, shape (400,)
+        Target parcel maps (e.g., one laminar dissimilarity vs BigBrain G1).
+    Z : array-like, shape (400, p)
+        Covariates to control for (e.g., the other 2 laminar layers).
+    n_perm : int
+        Number of spin rotations.
+    corr_type : {'pearson', 'spearman'}
+        Correlation type for empirical and null correlations on residuals.
+    schaefer_label_L, schaefer_label_R : str
+        Paths to Schaefer-400 fs_LR label GIFTIs.
+    random_state : int or None
+        RNG seed for rotations.
+
+    Returns
+    -------
+    r_partial_emp : float
+        Empirical partial correlation r(x, y | Z).
+    p_spin : float
+        Spin-based p-value on the residual-residual correlation.
+    """
+    x = np.asarray(x, float).squeeze()
+    y = np.asarray(y, float).squeeze()
+    Z = np.asarray(Z, float)
+
+    if x.shape != y.shape:
+        raise ValueError("x and y must have the same shape.")
+    if x.ndim != 1:
+        raise ValueError("x and y must be 1D vectors.")
+    if Z.ndim == 1:
+        Z = Z[:, None]
+
+    n = x.shape[0]
+    if Z.shape[0] != n:
+        raise ValueError("Z must have the same number of rows as x and y (400).")
+
+    # Ensure everything is finite
+    all_data = np.column_stack([x, y, Z])
+    if not np.all(np.isfinite(all_data)):
+        raise ValueError("x, y and all columns of Z must be finite (no NaNs/infs).")
+
+    # Design matrix for regression: intercept + Z
+    X_design = np.column_stack([np.ones(n), Z])
+
+    # Regress out Z from x and y
+    beta_x, *_ = np.linalg.lstsq(X_design, x, rcond=None)
+    beta_y, *_ = np.linalg.lstsq(X_design, y, rcond=None)
+    res_x = x - X_design @ beta_x
+    res_y = y - X_design @ beta_y
+
+    # Empirical partial correlation
+    r_partial_emp = float(np.corrcoef(res_x, res_y)[0, 1])
+
+    # Spins via ENIGMA
+    perm_id = _get_schaefer400_perm_id(
+        n_perm,
+        schaefer_label_L=schaefer_label_L,
+        schaefer_label_R=schaefer_label_R,
+        random_state=random_state,
+    )
+
+    p_spin = float(
+        perm_sphere_p(res_x, res_y, perm_id, corr_type=corr_type, null_dist=False)
+    )
+    return r_partial_emp, p_spin
+
 
 # ---------------------------------------------------------------------
-# CSV savers (SPIN or MSR)
+# CSV savers
 # ---------------------------------------------------------------------
 
 
@@ -871,34 +881,18 @@ def save_layerwise_results_csv(
                 }
             )
 
-    if pd is not None:
-        df = pd.DataFrame(
-            rows,
-            columns=[
-                "layer",
-                "network",
-                "net_mean",
-                "net_n",
-                "F_obs_layer",
-                "p_perm_layer",
-            ],
-        )
-        df.to_csv(out_csv, index=False)
-    else:
-        with open(out_csv, "w", newline="") as f:
-            w = csv.DictWriter(
-                f,
-                fieldnames=[
-                    "layer",
-                    "network",
-                    "net_mean",
-                    "net_n",
-                    "F_obs_layer",
-                    "p_perm_layer",
-                ],
-            )
-            w.writeheader()
-            w.writerows(rows)
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "layer",
+            "network",
+            "net_mean",
+            "net_n",
+            "F_obs_layer",
+            "p_perm_layer",
+        ],
+    )
+    df.to_csv(out_csv, index=False)
     print(f"Saved CSV to: {out_csv}")
 
 
@@ -934,38 +928,20 @@ def save_interaction_to_csv(
                 }
             )
 
-    if pd is not None:
-        df = pd.DataFrame(
-            rows,
-            columns=[
-                "network",
-                "layer",
-                "cell_mean",
-                "net_n",
-                "F_interaction",
-                "df1",
-                "df2",
-                "p_perm_interaction",
-            ],
-        )
-        df.to_csv(out_csv, index=False)
-    else:
-        with open(out_csv, "w", newline="") as f:
-            w = csv.DictWriter(
-                f,
-                fieldnames=[
-                    "network",
-                    "layer",
-                    "cell_mean",
-                    "net_n",
-                    "F_interaction",
-                    "df1",
-                    "df2",
-                    "p_perm_interaction",
-                ],
-            )
-            w.writeheader()
-            w.writerows(rows)
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "network",
+            "layer",
+            "cell_mean",
+            "net_n",
+            "F_interaction",
+            "df1",
+            "df2",
+            "p_perm_interaction",
+        ],
+    )
+    df.to_csv(out_csv, index=False)
     print(f"Saved CSV to: {out_csv}")
 
 
@@ -977,6 +953,8 @@ __all__ = [
     "anova_F_by_network",
     "layerwise_network_anova",
     "network_layer_interaction_general",
+    "p_spin_corr_schaefer400",
+    "p_spin_partial_corr_schaefer400",
     "save_layerwise_results_csv",
     "save_interaction_to_csv",
 ]

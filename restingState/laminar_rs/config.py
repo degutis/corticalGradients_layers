@@ -26,13 +26,13 @@ class LaminarConfig:
     """
     data_dir: Path
     N: int
-    set_thresh: float
+    set_thresh: float = 0.0
     num_layers: int = 3
-    atlas_path: Path = Path("HCP-MMP1_in-func.nii")
+    # atlas_path: Path = Path("HCP-MMP1_in-func.nii")
 
     def __post_init__(self):
         self.data_dir = Path(self.data_dir)
-        self.atlas_path = Path(self.atlas_path)
+        # self.atlas_path = Path(self.atlas_path)
 
     def npy_files(self) -> List[Path]:
         """Return sorted list of *.npy time-series files (if relevant)."""

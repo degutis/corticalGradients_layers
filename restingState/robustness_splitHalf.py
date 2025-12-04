@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.stats import gaussian_kde
 import laminar_rs as lrs
 
 
@@ -39,9 +39,9 @@ def run_split_half_robustness(
     N,
     output_dir,
     analysis,
-    n_components=10,
+    n_components=15,
     n_iter=500,
-    kernel=None,
+    kernel="cosine",
     random_state=13011991,
 ):
     """
@@ -122,28 +122,54 @@ def run_split_half_robustness(
     np.save(os.path.join(base_folder, "split_half_corr_D_Mid.npy"),   corr_Mid)
     np.save(os.path.join(base_folder, "split_half_corr_D_Sup.npy"),   corr_Sup)
 
-    # ---- Violin plots ----
+    # ---- Raincloud plots ----
     metrics = [corr_inter, corr_intra, corr_Deep, corr_Mid, corr_Sup]
     names   = ["D_inter", "D_intra", "D_Deep", "D_Mid", "D_Sup"]
 
     fig, axes = plt.subplots(1, 5, figsize=(12, 4), sharey=True)
-    for ax, vals, name in zip(axes, metrics, names):
-        parts = ax.violinplot(
-            vals,
-            positions=[0],
-            widths=0.8,
-            showmeans=False,
-            showmedians=False,
-            showextrema=False,
-        )
-        for pc in parts['bodies']:
-            pc.set_alpha(0.7)
 
-        # median as a dot
-        ax.scatter(0, np.median(vals), color='k', s=12, zorder=3)
-        ax.set_xticks([0])
-        ax.set_xticklabels([name])
+    for ax, vals, name in zip(axes, metrics, names):
+        vals = np.asarray(vals)
+        vals = vals[np.isfinite(vals)]
+
+        if vals.size == 0:
+            ax.set_title(f"{name}\n(no data)", fontsize=8)
+            ax.set_xticks([])
+            ax.set_ylim(0, 1)
+            continue
+
+        # KDE for the "cloud"
+        y_grid = np.linspace(0.0, 1.0, 200)
+        kde = gaussian_kde(vals)
+        density = kde(y_grid)
+
+        # scale density horizontally to a reasonable width
+        if np.max(density) > 0:
+            density = density / np.max(density) * 0.4  # width in x
+
+        # half-violin / cloud
+        ax.fill_betweenx(y_grid, 0, density, alpha=0.6)
+
+        # "rain" – jittered points
+        x_jitter = np.random.uniform(-0.05, 0.05, size=vals.size)
+        ax.scatter(
+            x_jitter,
+            vals,
+            s=8,
+            alpha=0.8,
+            edgecolor="k",
+            linewidth=0.3,
+            zorder=3,
+        )
+
+        # median line across the cloud
+        med = np.median(vals)
+        ax.plot([0, np.max(density)], [med, med], linewidth=1.5, zorder=4)
+
+        ax.set_title(name, fontsize=9)
+        ax.set_xlim(-0.2, 0.5)
         ax.set_ylim(0, 1)
+        ax.set_xticks([])
         ax.tick_params(labelsize=8)
 
     axes[0].set_ylabel("Split-half |r|")
@@ -153,13 +179,11 @@ def run_split_half_robustness(
     )
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
-    fig_path = os.path.join(base_folder, f"split_half_violin_nIter{n_iter}.png")
+    fig_path = os.path.join(base_folder, f"split_half_raincloud_nIter{n_iter}.png")
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    print(f"[SPLIT-HALF] Saved split-half correlations and violin plot to {base_folder}")
-
-
+    print(f"[SPLIT-HALF] Saved split-half correlations and raincloud plot to {base_folder}")
 # =============================
 # Main script
 # =============================
@@ -168,10 +192,7 @@ if __name__ == "__main__":
 
     # ---- basic config (adapt as needed) ----
     N = 400
-    setThresh = 0          # % of weakest edges per row to drop
     num_layers = 3
-    binarize_flag = False
-    subtractAverage_true = False
     largeGap = False
 
     BASE = Path('/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations')
@@ -186,11 +207,10 @@ if __name__ == "__main__":
     subs = len(data_dirs)
     os.makedirs(output_dir, exist_ok=True)
 
-    # must match the analysis folder name you use elsewhere
-    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
+    analysis = "WithinLayer_gradients_kernelCOS_API"
 
     kernel = None
-    n_components = 10       # original number of gradients
+    n_components = 15       # original number of gradients
     N_ITER = 500            # suggested number of split-half iterations
 
     subj_fc_path = os.path.join(output_dir, analysis, 'FC_subject_matrices_r.npy')
@@ -212,7 +232,6 @@ if __name__ == "__main__":
             cfg = lrs.config.LaminarConfig(
                 data_dir=data_dir,
                 N=N,
-                set_thresh=0,
                 num_layers=3,
             )
 
@@ -221,7 +240,6 @@ if __name__ == "__main__":
 
             adjMatrix = lrs.connectivity.thresh_and_binarize(
                 corr_layer_z,
-                set_thresh=0,
         )
             adj_matrices_appended.append(adjMatrix)
 

@@ -43,7 +43,7 @@ def run_gradient_robustness(
     D_inter, D_intra, D_Deep, D_Mid, D_Sup, and compute correlation matrices.
     Saves:
     - C_D_inter.npy, C_D_intra.npy, C_D_Deep.npy, C_D_Mid.npy, C_D_Sup.npy
-    - robustness_gradients_XX-YY.png
+    - robustness_gradients_XX-YY
     """
     grad_list = list(range(grad_min, grad_max + 1))
     nG = len(grad_list)
@@ -157,7 +157,7 @@ def run_gradient_robustness(
     cbar.ax.tick_params(labelsize=8)
 
     fig_path = os.path.join(
-        base_folder, f"robustness_gradients_{grad_min}-{grad_max}.png"
+        base_folder, f"robustness_gradients_{grad_min}-{grad_max}.svg"
     )
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
@@ -189,12 +189,11 @@ if __name__ == "__main__":
     subs = len(data_dirs)
     os.makedirs(output_dir, exist_ok=True)
 
-    # must match the analysis folder name used when FC_matrix.npy was created
-    analysis = "WithinLayer_gradients_kernelNone_21Subs_20Components_API"
+    analysis = "WithinLayer_gradients_kernelCOS_API"
 
-    kernel = None
+    kernel = "cosine"
     grad_min = 5
-    grad_max = 15
+    grad_max = 25
 
     # ---- Load or compute FC matrix M ----
     fc_path = os.path.join(output_dir, analysis, 'FC_matrix.npy')
