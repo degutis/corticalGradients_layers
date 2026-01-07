@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import pandas as pd
 from matplotlib.lines import Line2D
 from sklearn.cluster import KMeans
 import nibabel as nib
@@ -983,6 +984,10 @@ def plot_scatter_centroids(
                               float(np.mean(xy[:, 1])),
                               int(xy.shape[0])))
 
+    stem = Path(fname).stem
+    pd.DataFrame(centroids, columns=["layer", "network", "x_centroid", "y_centroid", "n_parcels"])\
+    .to_csv(out_dir / f"{stem}_centroids.csv", index=False)
+
     fig, ax = plt.subplots(figsize=(7, 7))
     for lyr, net, xm, ym, cnt in centroids:
         ax.scatter(xm, ym,
@@ -1027,6 +1032,8 @@ def plot_scatter_centroids(
     fig.savefig(path, dpi=500, bbox_inches="tight")
     plt.close(fig)
     print("Saved:", path)
+
+    return xm, ym
 
 # ---------- Network-centroid 3D cycle ----------
 
@@ -2058,7 +2065,7 @@ def plot_rsn_distributions_by_network(
     if all_vals.size == 0:
         raise ValueError("All values are NaN; cannot set y-axis.")
 
-    y_min = 0
+    y_min = float(np.nanmin(all_vals))
     y_max = float(np.nanmax(all_vals))
     if y_min == y_max:
         pad = 0.5 if y_min == 0 else 0.05 * abs(y_min)

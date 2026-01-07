@@ -1,6 +1,5 @@
 from pathlib import Path
 import numpy as np
-import pandas as pd
 from scipy.io import loadmat
 
 from laminar_rs.config import LaminarConfig
@@ -12,8 +11,8 @@ from laminar_rs.connectivity import (
 )
 from laminar_rs.gradients import (
     run_gradient_analysis_auto,
-    inter_areal_dissimilarity,
-    intra_areal_dissimilarity,
+    laminar_cosine_similarity_matrices,
+    csp_like_layer_vs_mean,
     run_gradient_analysis
 )
 from laminar_rs.plots_embedding import (
@@ -33,8 +32,8 @@ import laminar_rs.schaefer_stats as stats
 
 # ----------------- Parameters -----------------
 
-# ATLAS = "schaefer"
-ATLAS = "glasser"
+ATLAS = "schaefer"
+# ATLAS = "glasser"
 NUM_LAYERS = 3
 LARGE_GAP = False
 DATA_SET = "huppi"
@@ -67,7 +66,7 @@ elif DATA_SET=="kd":
 
 OUTPUT_DIR = ROOT
 
-ANALYSIS_NAME = "WithinLayer_gradients_kernelCOS_API"
+ANALYSIS_NAME = "WithinLayer_gradients_kernelCOS_alternative_CSP"
 RESULT_PATH = OUTPUT_DIR / ANALYSIS_NAME / "FC_matrix.npy"
 
 
@@ -130,28 +129,49 @@ def main() -> None:
 
     output = OUTPUT_DIR / ANALYSIS_NAME / "dissimilarityGradient"
 
-    D_inter, D_inter_deep, D_inter_mid, D_inter_sup, D = inter_areal_dissimilarity(G, output, N=N)
+    # D_inter, D_inter_deep, D_inter_mid, D_inter_sup, inter_distanceMatrix = inter_areal_dissimilarity(G, output, N=N)
 
-    D_intra, D_Deep, D_Mid, D_Sup = intra_areal_dissimilarity(G, output, N=N)
+    # G_distanceMatrix, A = run_gradient_analysis(
+    #     inter_distanceMatrix, n_components = 3, kernel="cosine", approach = "dm"
+    # )
 
-    D_inter_standard = (D_inter - np.min(D_inter)) / ((np.max(D_inter) - np.min(D_inter)))
-    D_intra_standard = (D_intra - np.min(D_intra)) / ((np.max(D_intra) - np.min(D_intra)))
+    # plotSurfaceMap(G_distanceMatrix[:,0], outdir=output, outname="gradients_interDistanceMatrix_0.png", HCP=HCP, cmap="viridis")
+    # plotSurfaceMap(G_distanceMatrix[:,1], outdir=output, outname="gradients_interDistanceMatrix_1.png", HCP=HCP, cmap="viridis")
+    # plotSurfaceMap(G_distanceMatrix[:,2], outdir=output, outname="gradients_interDistanceMatrix_2.png", HCP=HCP, cmap="viridis")
+
+
+    S_mean, S_deep, S_mid, S_sup = laminar_cosine_similarity_matrices(
+        G,
+        N=400,
+        zscore_within_layer=True,
+    )
+
+    G_deep_distance, lam_deep = csp_like_layer_vs_mean(S_mean, S_deep, n_components=5)
+    print(lam_deep)
+    G_mid_distance,  lam_mid  = csp_like_layer_vs_mean(S_mean, S_mid, n_components=5)
+    print(lam_mid)
+    G_sup_distance,  lam_sup  = csp_like_layer_vs_mean(S_mean, S_sup, n_components=5)
+    print(lam_sup)
+
+    plotSurfaceMap(G_deep_distance[:,0], outdir=output, outname="gradients_interDistanceMatrix_deep_0.png", HCP=HCP, cmap="cividis")
+    plotSurfaceMap(G_mid_distance[:,0], outdir=output, outname="gradients_interDistanceMatrix_mid_0.png", HCP=HCP, cmap="cividis")
+    plotSurfaceMap(G_sup_distance[:,0], outdir=output, outname="gradients_interDistanceMatrix_sup_0.png", HCP=HCP, cmap="cividis")
+
+    D_Deep = G_deep_distance[:,0]
+    D_Mid = G_mid_distance[:,0]
+    D_Sup = G_sup_distance[:,0]
+
     D_Deep_standard = (D_Deep - np.min(D_Deep)) / ((np.max(D_Deep) - np.min(D_Deep)))
     D_Mid_standard = (D_Mid - np.min(D_Mid)) / ((np.max(D_Mid) - np.min(D_Mid)))
     D_Sup_standard = (D_Sup - np.min(D_Sup)) / ((np.max(D_Sup) - np.min(D_Sup)))
 
-    plotSurfaceMap_LH_gradients(G, outdir=output, outname="gradients.png", HCP=HCP, cmap="PRGn")
-    plotSurfaceMap(np.arange(N), output, "Surface_Schaefer", cmap = "gray", HCP=HCP)
+    # plotSurfaceMap_LH_gradients(G, outdir=output, outname="gradients.png", HCP=HCP, cmap="PRGn")
+    # plotSurfaceMap(np.arange(N), output, "Surface_Schaefer", cmap = "gray", HCP=HCP)
 
     # ---------------------------------------------------------------------
     #                           Flatmaps and surface maps
     # ---------------------------------------------------------------------
 
-    out_inter = plotSurfaceMap(D_inter, output, "SurfaceMap_interFlatMap.png", cmap = "viridis", HCP=HCP)
-    out_intra = plotSurfaceMap(D_intra, output, "SurfaceMap_intraFlatMap.png", cmap = "cividis", HCP=HCP)
-    out_intraD = plotSurfaceMap(D_Deep, output, "SurfaceMap_intraDeep_FlatMap.png", vmin=0,vmax=0.4, cmap = "cividis", HCP=HCP)
-    out_intraM = plotSurfaceMap(D_Mid, output, "SurfaceMap_intraMid_FlatMap.png", vmin=0,vmax=0.4, cmap = "cividis", HCP=HCP)
-    out_intraS = plotSurfaceMap(D_Sup, output, "SurfaceMap_intraSup_FlatMap.png", vmin=0,vmax=0.4, cmap = "cividis", HCP=HCP)
 
     plot_rsn_distributions([D_Deep, D_Mid, D_Sup], out_dir=output, name="RSN_intraLayers", 
                            array_labels=["Deep", "Middle", "Superficial"], atlas=ATLAS, y_label="Intra-regional Distance")
@@ -159,16 +179,9 @@ def main() -> None:
     plot_rsn_distributions_by_network([D_Deep, D_Mid, D_Sup], out_dir=output, name="RSN_intraLayers", 
                            array_labels=["Deep", "Middle", "Superficial"], atlas=ATLAS, y_label="Intra-regional Distance")
 
-    plot_rsn_distributions([D_inter, D_intra], out_dir=output, name="RSN", 
-                           array_labels=["Inter", "Intra"], atlas=ATLAS, y_label="Distance", share_yaxis = False)
 
     output = OUTPUT_DIR / ANALYSIS_NAME / "dissimilarityGradient" / "Flatmap"
 
-    plotFlatMap(D_inter, output, "Flatmap_interFlatMap.png", HCP=HCP)
-    plotFlatMap(D_intra, output, "Flatmap_intraFlatMap.png", HCP=HCP)
-    plotFlatMap(D_Deep, output, "Flatmap_intraDeep_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
-    plotFlatMap(D_Mid, output, "Flatmap_intraMid_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
-    plotFlatMap(D_Sup, output, "Flatmap_intraSup_FlatMap.png", vmin=0,vmax=0.5, HCP=HCP)
 
     # ---------------------------------------------------------------------
     #                           Scatter plots
@@ -189,11 +202,6 @@ def main() -> None:
     plot_network_centroids3D(D_Sup_standard[:,np.newaxis], output, Y=D_Mid_standard[:,np.newaxis], Z=D_Deep_standard[:,np.newaxis], 
                                         x_label="Sup", y_label ="Middle", z_label="Deep", fname="Scatter_Centroid_DeepMidSup_corrected.svg", atlas=ATLAS)
 
-    plot_scatter_with_global_correlation(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), output, 
-                                    x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra.svg", atlas=ATLAS)
-
-    plot_scatter_centroids(np.concatenate([D_inter_standard[:,np.newaxis], D_intra_standard[:,np.newaxis]], axis=1), output, 
-                        x_label="Interparcel laminar difference", y_label ="Intraparcel laminar difference", fname="Scatter_InterIntra_centroid.svg", atlas=ATLAS)
 
     # ---------------------------------------------------------------------
     #                           Scatter plots layer-specific 2D
@@ -228,12 +236,6 @@ def main() -> None:
         delimiter=",",
     )
     G_bigBrain_standard = (G_bigBrain - np.min(G_bigBrain)) / ((np.max(G_bigBrain) - np.min(G_bigBrain)))
-
-    plot_scatter_with_global_correlation(np.concatenate([D_intra_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), output, 
-                                        x_label="Intraparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_IntraLamThick.svg")
-
-    plot_scatter_with_global_correlation(np.concatenate([D_inter_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), output, 
-                                        x_label="Interparcel laminar difference", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_InterLamThick.svg")
 
     plot_scatter_with_global_correlation(np.concatenate([D_Deep_standard[:,np.newaxis], G_bigBrain_standard[:,np.newaxis]], axis=1), output, 
                                         x_label="Intraparcel laminar difference: deep", y_label ="Laminar Thickness G1", fname="Scatter_ENIGMABigBrain_IntraDeepLamThick.svg")
@@ -278,12 +280,14 @@ def main() -> None:
     print("saved:", fig_path, "and", csv_path)
 
     # ---------------------------------------------------------------------
-    #              Hubness TO-DO (maybe, since it's not a useful metric)
+    #                           Hubness
     # ---------------------------------------------------------------------
     
-    # G_hubness = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/HubnessAnalysis/gradients_Hubness_Schaefer.npy")
-    # G_hubness_00_standard = (G_hubness[:,0] - np.min(G_hubness[:,0])) / ((np.max(G_hubness[:,0]) - np.min(G_hubness[:,0])))
-    # G_hubness_01_standard = (G_hubness[:,1] - np.min(G_hubness[:,1])) / ((np.max(G_hubness[:,1]) - np.min(G_hubness[:,1])))
+    # TO-DO (maybe)
+
+    G_hubness = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/HubnessAnalysis/gradients_Hubness_Schaefer.npy")
+    G_hubness_00_standard = (G_hubness[:,0] - np.min(G_hubness[:,0])) / ((np.max(G_hubness[:,0]) - np.min(G_hubness[:,0])))
+    G_hubness_01_standard = (G_hubness[:,1] - np.min(G_hubness[:,1])) / ((np.max(G_hubness[:,1]) - np.min(G_hubness[:,1])))
 
     # ---------------------------------------------------------------------
     #                           SNR
@@ -321,228 +325,229 @@ def main() -> None:
     # Network × layer interactions
     # ----------------------------
 
-    intra_int_spin = stats.network_layer_interaction_general(
-        D_layers=[D_Deep, D_Mid, D_Sup],
-        layer_names=["Deep", "Middle", "Superficial"],
-        n_perm=5000,
-        random_state=1,
-    )
+    # intra_int_spin = stats.network_layer_interaction_general(
+    #     D_layers=[D_Deep, D_Mid, D_Sup],
+    #     layer_names=["Deep", "Middle", "Superficial"],
+    #     n_perm=5000,
+    #     random_state=1,
+    # )
 
-    stats.save_interaction_to_csv(
-        intra_int_spin,
-        out_csv=str(output / "intra_interaction_spin.csv"),
-    )
+    # stats.save_interaction_to_csv(
+    #     intra_int_spin,
+    #     out_csv=str(output / "intra_interaction_spin.csv"),
+    # )
 
-    inter_intra_int_spin = stats.network_layer_interaction_general(
-        D_layers=[D_inter, D_intra],
-        layer_names=["Inter", "Intra"],
-        n_perm=5000,
-        random_state=2,
-    )
+    # inter_intra_int_spin = stats.network_layer_interaction_general(
+    #     D_layers=[D_inter, D_intra],
+    #     layer_names=["Inter", "Intra"],
+    #     n_perm=5000,
+    #     random_state=2,
+    # )
 
-    stats.save_interaction_to_csv(
-        inter_intra_int_spin,
-        out_csv=str(output / "interintra_interaction_spin_ENIGMA.csv"),
-    )
+    # stats.save_interaction_to_csv(
+    #     inter_intra_int_spin,
+    #     out_csv=str(output / "interintra_interaction_spin_ENIGMA.csv"),
+    # )
 
     # --------------------------------------------------
     # Spin-based correlation tests (ENIGMA-style p-spin)
+    # Mirrors plot_scatter_with_global_correlation calls
     # --------------------------------------------------
 
-    import csv  # local is fine here
+    # import csv  # local is fine here
 
-    corr_rows = []
+    # corr_rows = []
 
-    def add_spin_corr(name: str, x: np.ndarray, y: np.ndarray, seed: int) -> None:
-        """Helper to compute p-spin correlation and append a row."""
-        r_emp, p_spin = stats.p_spin_corr_schaefer400(
-            x=x,
-            y=y,
-            n_perm=5000,
-            corr_type="pearson",
-            random_state=seed,
-        )
-        corr_rows.append(
-            {
-                "contrast": name,
-                "r_emp": float(r_emp),
-                "p_spin": float(p_spin),
-                "n_perm": 5000,
-                "seed": int(seed),
-            }
-        )
+    # def add_spin_corr(name: str, x: np.ndarray, y: np.ndarray, seed: int) -> None:
+    #     """Helper to compute p-spin correlation and append a row."""
+    #     r_emp, p_spin = stats.p_spin_corr_schaefer400(
+    #         x=x,
+    #         y=y,
+    #         n_perm=5000,
+    #         corr_type="pearson",
+    #         random_state=seed,
+    #     )
+    #     corr_rows.append(
+    #         {
+    #             "contrast": name,
+    #             "r_emp": float(r_emp),
+    #             "p_spin": float(p_spin),
+    #             "n_perm": 5000,
+    #             "seed": int(seed),
+    #         }
+    #     )
 
-    if ATLAS == "schaefer":
-        # 1) Inter vs intra laminar difference
-        add_spin_corr(
-            name="Inter_vs_Intra",
-            x=D_inter_standard,
-            y=D_intra_standard,
-            seed=10,
-        )
+    # if ATLAS == "schaefer":
+    #     # 1) Inter vs intra laminar difference
+    #     add_spin_corr(
+    #         name="Inter_vs_Intra",
+    #         x=D_inter_standard,
+    #         y=D_intra_standard,
+    #         seed=10,
+    #     )
 
-        # 2) Within-intra layer pairs
-        add_spin_corr(
-            name="Intra_Sup_vs_Mid",
-            x=D_Sup_standard,
-            y=D_Mid_standard,
-            seed=11,
-        )
-        add_spin_corr(
-            name="Intra_Sup_vs_Deep",
-            x=D_Sup_standard,
-            y=D_Deep_standard,
-            seed=12,
-        )
-        add_spin_corr(
-            name="Intra_Mid_vs_Deep",
-            x=D_Mid_standard,
-            y=D_Deep_standard,
-            seed=13,
-        )
+    #     # 2) Within-intra layer pairs
+    #     add_spin_corr(
+    #         name="Intra_Sup_vs_Mid",
+    #         x=D_Sup_standard,
+    #         y=D_Mid_standard,
+    #         seed=11,
+    #     )
+    #     add_spin_corr(
+    #         name="Intra_Sup_vs_Deep",
+    #         x=D_Sup_standard,
+    #         y=D_Deep_standard,
+    #         seed=12,
+    #     )
+    #     add_spin_corr(
+    #         name="Intra_Mid_vs_Deep",
+    #         x=D_Mid_standard,
+    #         y=D_Deep_standard,
+    #         seed=13,
+    #     )
 
-        # 3) Laminar dissociation vs BigBrain histology gradient (G1)
-        add_spin_corr(
-            name="Intra_vs_BigBrain_G1",
-            x=D_intra_standard,
-            y=G_bigBrain_standard,
-            seed=20,
-        )
-        add_spin_corr(
-            name="Inter_vs_BigBrain_G1",
-            x=D_inter_standard,
-            y=G_bigBrain_standard,
-            seed=21,
-        )
-        add_spin_corr(
-            name="Deep_intra_vs_BigBrain_G1",
-            x=D_Deep_standard,
-            y=G_bigBrain_standard,
-            seed=22,
-        )
-        add_spin_corr(
-            name="Mid_intra_vs_BigBrain_G1",
-            x=D_Mid_standard,
-            y=G_bigBrain_standard,
-            seed=23,
-        )
-        add_spin_corr(
-            name="Sup_intra_vs_BigBrain_G1",
-            x=D_Sup_standard,
-            y=G_bigBrain_standard,
-            seed=24,
-        )
+    #     # 3) Laminar dissociation vs BigBrain histology gradient (G1)
+    #     add_spin_corr(
+    #         name="Intra_vs_BigBrain_G1",
+    #         x=D_intra_standard,
+    #         y=G_bigBrain_standard,
+    #         seed=20,
+    #     )
+    #     add_spin_corr(
+    #         name="Inter_vs_BigBrain_G1",
+    #         x=D_inter_standard,
+    #         y=G_bigBrain_standard,
+    #         seed=21,
+    #     )
+    #     add_spin_corr(
+    #         name="Deep_intra_vs_BigBrain_G1",
+    #         x=D_Deep_standard,
+    #         y=G_bigBrain_standard,
+    #         seed=22,
+    #     )
+    #     add_spin_corr(
+    #         name="Mid_intra_vs_BigBrain_G1",
+    #         x=D_Mid_standard,
+    #         y=G_bigBrain_standard,
+    #         seed=23,
+    #     )
+    #     add_spin_corr(
+    #         name="Sup_intra_vs_BigBrain_G1",
+    #         x=D_Sup_standard,
+    #         y=G_bigBrain_standard,
+    #         seed=24,
+    #     )
 
-        # 4) Laminar dissociation vs SNR
-        add_spin_corr(
-            name="Deep_intra_vs_SNR_deep",
-            x=D_Deep_standard,
-            y=SNR_deep,
-            seed=30,
-        )
-        add_spin_corr(
-            name="Mid_intra_vs_SNR_mid",
-            x=D_Mid_standard,
-            y=SNR_mid,
-            seed=31,
-        )
-        add_spin_corr(
-            name="Sup_intra_vs_SNR_sup",
-            x=D_Sup_standard,
-            y=SNR_sup,
-            seed=32,
-        )
+    #     # 4) Laminar dissociation vs SNR
+    #     add_spin_corr(
+    #         name="Deep_intra_vs_SNR_deep",
+    #         x=D_Deep_standard,
+    #         y=SNR_deep,
+    #         seed=30,
+    #     )
+    #     add_spin_corr(
+    #         name="Mid_intra_vs_SNR_mid",
+    #         x=D_Mid_standard,
+    #         y=SNR_mid,
+    #         seed=31,
+    #     )
+    #     add_spin_corr(
+    #         name="Sup_intra_vs_SNR_sup",
+    #         x=D_Sup_standard,
+    #         y=SNR_sup,
+    #         seed=32,
+    #     )
 
-        corr_csv_path = output / "spin_correlations_schaefer_enigma.csv"
-        with open(corr_csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["contrast", "r_emp", "p_spin", "n_perm", "seed"],
-            )
-            writer.writeheader()
-            writer.writerows(corr_rows)
+    #     corr_csv_path = output / "spin_correlations_schaefer_enigma.csv"
+    #     with open(corr_csv_path, "w", newline="") as f:
+    #         writer = csv.DictWriter(
+    #             f,
+    #             fieldnames=["contrast", "r_emp", "p_spin", "n_perm", "seed"],
+    #         )
+    #         writer.writeheader()
+    #         writer.writerows(corr_rows)
 
-        print(f"[INFO] Saved spin-based correlation stats to {corr_csv_path}")
+    #     print(f"[INFO] Saved spin-based correlation stats to {corr_csv_path}")
 
         # --------------------------------------------------------
         # Partial correlations: layer-specific intra vs BigBrain G1
         # Each layer vs G1, controlling the other two layers
         # --------------------------------------------------------
 
-        partial_rows = []
+        # partial_rows = []
 
-        # Superficial vs G1 | Middle, Deep
-        Z_sup = np.column_stack([D_Mid_standard, D_Deep_standard])
-        r_sup, p_sup = stats.p_spin_partial_corr_schaefer400(
-            x=D_Sup_standard,
-            y=G_bigBrain_standard,
-            Z=Z_sup,
-            n_perm=5000,
-            corr_type="pearson",
-            random_state=401,
-        )
-        partial_rows.append(
-            {
-                "layer": "Superficial",
-                "r_partial_emp": float(r_sup),
-                "p_spin": float(p_sup),
-                "n_perm": 5000,
-                "seed": 401,
-            }
-        )
+        # # Superficial vs G1 | Middle, Deep
+        # Z_sup = np.column_stack([D_Mid_standard, D_Deep_standard])
+        # r_sup, p_sup = stats.p_spin_partial_corr_schaefer400(
+        #     x=D_Sup_standard,
+        #     y=G_bigBrain_standard,
+        #     Z=Z_sup,
+        #     n_perm=5000,
+        #     corr_type="pearson",
+        #     random_state=401,
+        # )
+        # partial_rows.append(
+        #     {
+        #         "layer": "Superficial",
+        #         "r_partial_emp": float(r_sup),
+        #         "p_spin": float(p_sup),
+        #         "n_perm": 5000,
+        #         "seed": 401,
+        #     }
+        # )
 
-        # Middle vs G1 | Superficial, Deep
-        Z_mid = np.column_stack([D_Sup_standard, D_Deep_standard])
-        r_mid, p_mid = stats.p_spin_partial_corr_schaefer400(
-            x=D_Mid_standard,
-            y=G_bigBrain_standard,
-            Z=Z_mid,
-            n_perm=5000,
-            corr_type="pearson",
-            random_state=402,
-        )
-        partial_rows.append(
-            {
-                "layer": "Middle",
-                "r_partial_emp": float(r_mid),
-                "p_spin": float(p_mid),
-                "n_perm": 5000,
-                "seed": 402,
-            }
-        )
+        # # Middle vs G1 | Superficial, Deep
+        # Z_mid = np.column_stack([D_Sup_standard, D_Deep_standard])
+        # r_mid, p_mid = stats.p_spin_partial_corr_schaefer400(
+        #     x=D_Mid_standard,
+        #     y=G_bigBrain_standard,
+        #     Z=Z_mid,
+        #     n_perm=5000,
+        #     corr_type="pearson",
+        #     random_state=402,
+        # )
+        # partial_rows.append(
+        #     {
+        #         "layer": "Middle",
+        #         "r_partial_emp": float(r_mid),
+        #         "p_spin": float(p_mid),
+        #         "n_perm": 5000,
+        #         "seed": 402,
+        #     }
+        # )
 
-        # Deep vs G1 | Superficial, Middle
-        Z_deep = np.column_stack([D_Sup_standard, D_Mid_standard])
-        r_deep, p_deep = stats.p_spin_partial_corr_schaefer400(
-            x=D_Deep_standard,
-            y=G_bigBrain_standard,
-            Z=Z_deep,
-            n_perm=5000,
-            corr_type="pearson",
-            random_state=403,
-        )
-        partial_rows.append(
-            {
-                "layer": "Deep",
-                "r_partial_emp": float(r_deep),
-                "p_spin": float(p_deep),
-                "n_perm": 5000,
-                "seed": 403,
-            }
-        )
+        # # Deep vs G1 | Superficial, Middle
+        # Z_deep = np.column_stack([D_Sup_standard, D_Mid_standard])
+        # r_deep, p_deep = stats.p_spin_partial_corr_schaefer400(
+        #     x=D_Deep_standard,
+        #     y=G_bigBrain_standard,
+        #     Z=Z_deep,
+        #     n_perm=5000,
+        #     corr_type="pearson",
+        #     random_state=403,
+        # )
+        # partial_rows.append(
+        #     {
+        #         "layer": "Deep",
+        #         "r_partial_emp": float(r_deep),
+        #         "p_spin": float(p_deep),
+        #         "n_perm": 5000,
+        #         "seed": 403,
+        #     }
+        # )
 
-        partial_csv_path = output / "partial_corr_bigbrain_layers_spin_enigma.csv"
-        with open(partial_csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["layer", "r_partial_emp", "p_spin", "n_perm", "seed"],
-            )
-            writer.writeheader()
-            writer.writerows(partial_rows)
+        # partial_csv_path = output / "partial_corr_bigbrain_layers_spin_enigma.csv"
+        # with open(partial_csv_path, "w", newline="") as f:
+        #     writer = csv.DictWriter(
+        #         f,
+        #         fieldnames=["layer", "r_partial_emp", "p_spin", "n_perm", "seed"],
+        #     )
+        #     writer.writeheader()
+        #     writer.writerows(partial_rows)
 
-        print(
-            f"[INFO] Saved partial spin correlations (layers vs BigBrain G1) to {partial_csv_path}"
-        )
+        # print(
+        #     f"[INFO] Saved partial spin correlations (layers vs BigBrain G1) to {partial_csv_path}"
+        # )
 
 
 

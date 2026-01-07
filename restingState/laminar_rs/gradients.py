@@ -489,7 +489,7 @@ def inter_areal_dissimilarity(
     )
     plt.close()
 
-    return distanceSum, distanceSum_deep, distanceSum_mid, distanceSum_sup
+    return distanceSum, distanceSum_deep, distanceSum_mid, distanceSum_sup, D
 
 
 def intra_areal_dissimilarity(
@@ -636,6 +636,159 @@ def intra_areal_dissimilarity(
     else:
         raise ValueError("mode must be 'to_mean' or 'pairwise'")
 
+
+
+def laminar_cosine_similarity_matrices(
+    G_all: np.ndarray,
+    N: int = 400,
+    zscore_within_layer: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Cosine similarity matrices for deep, middle, superficial and their mean.
+
+    This function:
+      1. Splits a (L*N × k) embedding matrix into L layers of (N × k),
+      2. Optionally z-scores embeddings within each layer across parcels,
+      3. L2-normalises rows in each layer to unit length,
+      4. Selects three approximately equidistant layers interpreted as
+         deep/mid/superficial,
+      5. Computes cosine similarity matrices for each selected layer,
+      6. Computes their mean similarity matrix.
+
+    Parameters
+    ----------
+    G_all : np.ndarray
+        (L*N × k) matrix of gradients/embeddings, stacked by layer:
+        [layer1; layer2; ...; layerL].
+    N : int, optional
+        Number of parcels per layer.
+    zscore_within_layer : bool, optional
+        If True, z-score embeddings within each layer (across parcels)
+        before L2 normalisation.
+
+    Returns
+    -------
+    S_mean : np.ndarray
+        (N × N) mean cosine similarity across the selected deep/mid/sup
+        layers: S_mean = (S_deep + S_mid + S_sup) / 3.
+    S_deep : np.ndarray
+        (N × N) cosine similarity matrix for the "deep" layer.
+    S_mid : np.ndarray
+        (N × N) cosine similarity matrix for the "middle" layer.
+    S_sup : np.ndarray
+        (N × N) cosine similarity matrix for the "superficial" layer.
+    """
+    layers = _split_layers(G_all, N=N)  # list of (N × k)
+    L = len(layers)
+    if L < 3:
+        raise ValueError(f"Need at least 3 layers to define deep/mid/sup; got L={L}")
+
+    # Optional z-scoring within each layer across parcels
+    if zscore_within_layer:
+        layers = [
+            (X - X.mean(axis=0, keepdims=True)) /
+            (X.std(axis=0, keepdims=True) + 1e-12)
+            for X in layers
+        ]
+
+    # Normalised layer embeddings
+    U_layers = [_l2_normalize_rows(X) for X in layers]
+
+    # Indices for deep / mid / sup (same convention as other laminar funcs)
+    i_deep, i_mid, i_sup = _equidistant_layer_indices(L)
+
+    U_deep = U_layers[i_deep]
+    U_mid  = U_layers[i_mid]
+    U_sup  = U_layers[i_sup]
+
+    # Cosine similarity matrices
+    S_deep = U_deep @ U_deep.T   # (N × N)
+    S_mid  = U_mid  @ U_mid.T
+    S_sup  = U_sup  @ U_sup.T
+
+    # Mean similarity across the three selected layers
+    S_mean = (S_deep + S_mid + S_sup) / 3.0
+
+    return S_mean, S_deep, S_mid, S_sup
+
+
+def csp_like_layer_vs_mean(
+    C_mean: np.ndarray,
+    C_layer: np.ndarray,
+    n_components: int | None = None,
+    reg: float = 1e-6,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    CSP-like decomposition: spatial filters maximising layer vs mean contrast.
+
+    Finds spatial filters w that maximise the Rayleigh quotient:
+
+        max_w  (w^T C_layer w) / (w^T C_mean w)
+
+    using a pseudoinverse-based approximation:
+      1. Regularise C_mean: C_mean_reg = C_mean + reg I
+      2. Compute P = pinv(C_mean_reg) @ C_layer
+      3. Symmetrise P and eigendecompose.
+
+    Parameters
+    ----------
+    C_mean : np.ndarray
+        (N × N) mean connectivity / similarity matrix (e.g. cosine similarity
+        averaged across layers). Should be symmetric.
+    C_layer : np.ndarray
+        (N × N) layer-specific connectivity / similarity matrix (e.g.,
+        from deep, mid or superficial layer residuals). Must match
+        the shape of C_mean.
+    n_components : int or None
+        Number of spatial filters to return. If None, return all N.
+    reg : float
+        Diagonal regularisation added to C_mean before pseudoinverse.
+
+    Returns
+    -------
+    W : np.ndarray
+        (N × n_components) spatial filters. Columns w are spatial patterns
+        (over parcels) approximating the maximisers of the CSP-like ratio.
+        Sorted by decreasing eigenvalue.
+    lambdas : np.ndarray
+        (n_components,) approximate generalised eigenvalues.
+    """
+    if C_mean.shape != C_layer.shape:
+        raise ValueError("C_mean and C_layer must have the same shape.")
+    if C_mean.shape[0] != C_mean.shape[1]:
+        raise ValueError("Connectivity matrices must be square.")
+
+    N = C_mean.shape[0]
+
+    # 1) Regularise C_mean slightly for stability
+    C_mean_reg = C_mean + reg * np.eye(N)
+
+    # 2) Pseudoinverse of C_mean_reg
+    C_mean_pinv = np.linalg.pinv(C_mean_reg)  # (N × N)
+
+    # 3) Form the "effective" operator and symmetrise
+    #    In exact arithmetic, C_mean^{-1} C_layer is similar to the symmetric
+    #    whitened operator, but numerically it won't be perfectly symmetric.
+    P = C_mean_pinv @ C_layer              # (N × N)
+    P = 0.5 * (P + P.T)                    # enforce symmetry
+
+    # 4) Eigen-decomposition of symmetric P
+    eigvals, eigvecs = np.linalg.eigh(P)   # eigvecs columns: spatial filters
+
+    # 5) Sort by decreasing eigenvalue (largest contrast first)
+    idx = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[idx]
+    eigvecs = eigvecs[:, idx]
+
+    # 6) Truncate if requested
+    if n_components is not None and n_components < eigvecs.shape[1]:
+        W = eigvecs[:, :n_components]
+        lambdas = eigvals[:n_components]
+    else:
+        W = eigvecs
+        lambdas = eigvals
+
+    return W, lambdas
 
 # ---------------------------------------------------------------------
 # Eigenvector clustering & utilities
@@ -973,6 +1126,8 @@ __all__ = [
     "run_gradient_analysis_affinity",
     "inter_areal_dissimilarity",
     "intra_areal_dissimilarity",
+    "laminar_cosine_similarity_matrices",
+    "csp_like_layer_vs_mean",
     "sign_invariant_distance",
     "runClusterAnalysis",
     "convert_eigvals_to_list",

@@ -317,9 +317,8 @@ def plotSurfaceMap_LH_gradients(
     layer_labels: Optional[Sequence[str]] = None,
     same_vmin_vmax_across_layers: bool = False,
 ) -> str:
-    """
-    (docstring unchanged)
-    """
+
+
     os.makedirs(outdir, exist_ok=True)
     outpath = os.path.join(outdir, outname)
 
