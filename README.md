@@ -13,7 +13,7 @@ To execute the main analysis:
 
 ## Requirements
 
-Dependencies and versions are listed in [`requirements.txt`](requirements.txt).
+Dependencies and versions are listed in [`environment.yml`](environment.yml).
 
 ## Contact
 
