@@ -33,8 +33,8 @@ import laminar_rs.schaefer_stats as stats
 
 # ----------------- Parameters -----------------
 
-# ATLAS = "schaefer"
-ATLAS = "glasser"
+ATLAS = "schaefer"
+# ATLAS = "glasser"
 NUM_LAYERS = 3
 LARGE_GAP = False
 DATA_SET = "huppi"
@@ -276,14 +276,6 @@ def main() -> None:
     )    
     
     print("saved:", fig_path, "and", csv_path)
-
-    # ---------------------------------------------------------------------
-    #              Hubness TO-DO (maybe, since it's not a useful metric)
-    # ---------------------------------------------------------------------
-    
-    # G_hubness = np.load("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/HubnessAnalysis/gradients_Hubness_Schaefer.npy")
-    # G_hubness_00_standard = (G_hubness[:,0] - np.min(G_hubness[:,0])) / ((np.max(G_hubness[:,0]) - np.min(G_hubness[:,0])))
-    # G_hubness_01_standard = (G_hubness[:,1] - np.min(G_hubness[:,1])) / ((np.max(G_hubness[:,1]) - np.min(G_hubness[:,1])))
 
     # ---------------------------------------------------------------------
     #                           SNR
