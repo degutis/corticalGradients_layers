@@ -1,8 +1,8 @@
-# Layer-specific functional gradients uncover intrinsic-network organization and feedback processing
+# Functional gradients dissociate between cortical layers 
 
 This repository contains the complete pipeline to recreate the analysis and plots from the manuscript:
 
-**"Layer-specific functional gradients uncover intrinsic-network organization and feedback processing"**  
+**"Functional gradients dissociate between cortical layers"**  
 *Degutis, J.K. et al. 2026*
 
 ## How to Run
