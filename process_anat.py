@@ -21,23 +21,6 @@ def process_ref_anat_subject(studyDataDir, subject):
     )
     ciftify_dir = os.path.join(studyDataDir, "derivatives", "ciftify", subject)
 
-    #os.makedirs(ref_anat_dir, exist_ok=True)
-
-     # 1. register freesurfer to epi
-    #subprocess.run(
-    #     [
-    #         "register_fs-to-bold_no-manual.sh",
-    #         os.path.join(preprocess_vaso_dir, "sub-01_bold_SMSEPI_mc_MEAN.nii"),
-    #         fs_dir,
-    #     ],
-    #     cwd=ref_anat_dir,
-    # )
-
-     # clean up
-    # os.remove(os.path.join(ref_anat_dir, "fs_T1.nii"))
-    # os.remove(os.path.join(ref_anat_dir, "fs_to_func_Warped.nii"))
-    # os.remove(os.path.join(ref_anat_dir, "fs_to_func_InverseWarped.nii"))
-
      # 2. transform freesurfer surface to epi_space
     fs_to_func_reg = [
         os.path.join(ref_anat_dir, filename)
@@ -85,23 +68,7 @@ def process_ref_anat_subject(studyDataDir, subject):
     }
     for method in ["equivol", "equidist"]:
         print(f"Calculating VDFS and layers using method: {method}...")
-        # vdfs_depths, vdfs_columns = vdfs.process_dc_voxeldepth_from_surfaces(
-        #     os.path.join(ref_anat_dir, "L.white.func.surf.gii"),
-        #     area_files["lh", "white"],
-        #     os.path.join(ref_anat_dir, "L.pial.func.surf.gii"),
-        #     area_files["lh", "pial"],
-        #     os.path.join(ref_anat_dir, "R.white.func.surf.gii"),
-        #     area_files["rh", "white"],
-        #     os.path.join(ref_anat_dir, "R.pial.func.surf.gii"),
-        #     area_files["rh", "pial"],
-        #     os.path.join(ref_anat_dir, "fs_t1_in-func.nii"),
-        #     os.path.join(ref_anat_dir, f"vdfs_depths_{method}.nii"),
-        #     os.path.join(ref_anat_dir, f"vdfs_columns_{method}.nii"),
-        #     method=method,
-        #     upsample_factor=None,
-        #     n_jobs=8,
-        #     force=True,
-        # )
+
         analysis.calc_layers_laynii(
             os.path.join(ref_anat_dir, "rim.nii"),
             method=method,
@@ -127,7 +94,7 @@ def process_ref_anat_subject(studyDataDir, subject):
         "R": "/home/degutis/repos/HCP_WB_parcels/Schaefer400_7net.R.164k_fs_LR.label.gii",
     }
     
-
+    
     for hemi in ["L", "R"]:
         fs_LR_sphere = os.path.join(
             ciftify_dir, "MNINonLinear", f"{subject}.{hemi}.sphere.164k_fs_LR.surf.gii"
@@ -209,7 +176,7 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM007"
+    subject = "sub-LAM023"
     # studyDir = "/media/miplab-nas2/Data/Karolis/high_res_resting"
     # subject = "sub-02"
     process_ref_anat_subject(studyDir, subject)

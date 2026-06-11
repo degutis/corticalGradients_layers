@@ -1,11 +1,14 @@
 # laminar_rs/plots_embedding.py
+#
+# RSN-based embedding plots, supporting both Yeo-7 and Yeo-17 partitions
+# for the Schaefer-400 and Glasser/HCP-MMP1.0 atlases.
+
 from __future__ import annotations
 import os
 from pathlib import Path
-from typing import Tuple, List, Optional, Dict, List, Literal, Sequence
+from typing import Tuple, List, Optional, Dict, Literal, Sequence
 
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pandas as pd
@@ -19,39 +22,58 @@ from scipy.stats import f_oneway, gaussian_kde
 import hcp_utils as hcp
 
 
-# ---------- KMeans on embedding ----------
+# ---------- Yeo network metadata ----------
 
-def run_kmeans(eigvecs: np.ndarray,
-               out_dir,
-               name: str,
-               num_clusters: int = 3,
-               random_state: int = 99,
-               eigvecs_to_plot: Tuple[int, int] = (1, 2)) -> None:
-    """
-    Your original runKMeans method.
-    """
-    out_dir = Path(out_dir)
-    layer_dir = out_dir / name
-    layer_dir.mkdir(parents=True, exist_ok=True)
+_YEO7_LABELS = [
+    "Visual", "Somatomotor", "Dorsal Attn",
+    "Ventral/Salience", "Limbic", "Control", "Default"
+]
+_YEO7_ABBR = ["VIS", "SOM", "DAN", "VAN", "LIM", "CON", "DMN"]
 
-    kmeans = KMeans(n_clusters=num_clusters, random_state=random_state)
-    labels = kmeans.fit_predict(eigvecs)
-    eigvecs_str = "".join(map(str, eigvecs_to_plot))
+# Canonical 17-network ordering used by the Yeo / Schaefer atlases.
+# Note: the Schaefer 17Networks parcellation distinguishes:
+#   VisCent / VisPeri, SomMotA / SomMotB, DorsAttnA / DorsAttnB,
+#   SalVentAttnA / SalVentAttnB, LimbicA (TempPole) / LimbicB (OFC),
+#   ContA / ContB / ContC, DefaultA / DefaultB / DefaultC, TempPar.
+_YEO17_LABELS = [
+    "VisCent", "VisPeri",
+    "SomMotA", "SomMotB",
+    "DorsAttnA", "DorsAttnB",
+    "SalVentAttnA", "SalVentAttnB",
+    "LimbicA", "LimbicB",
+    "ContA", "ContB", "ContC",
+    "DefaultA", "DefaultB", "DefaultC",
+    "TempPar",
+]
+_YEO17_ABBR = [
+    "VisC", "VisP",
+    "SMA", "SMB",
+    "DAN-A", "DAN-B",
+    "VAN-A", "VAN-B",
+    "LimA", "LimB",
+    "ConA", "ConB", "ConC",
+    "DMN-A", "DMN-B", "DMN-C",
+    "TPar",
+]
 
-    plt.figure(figsize=(8, 6))
-    plt.scatter(eigvecs[:, eigvecs_to_plot[0]],
-                eigvecs[:, eigvecs_to_plot[1]],
-                c=labels, cmap="viridis", edgecolor="k", s=50)
-    plt.xlabel(f"Eigenvector {eigvecs_to_plot[0]+1}")
-    plt.ylabel(f"Eigenvector {eigvecs_to_plot[1]+1}")
-    plt.title("KMeans Clustering")
-    plt.colorbar(label="Cluster")
-    plt.savefig(layer_dir / f"KMeans_laplacian_embedding_{eigvecs_str}.png",
-                bbox_inches="tight")
-    plt.close()
+
+def _yeo_default_labels(yeo_n: int) -> List[str]:
+    if yeo_n == 7:
+        return list(_YEO7_LABELS)
+    if yeo_n == 17:
+        return list(_YEO17_LABELS)
+    raise ValueError(f"yeo_n must be 7 or 17, got {yeo_n}")
 
 
-# ---------- Schaefer helpers ----------
+def _yeo_default_abbr(yeo_n: int) -> List[str]:
+    if yeo_n == 7:
+        return list(_YEO7_ABBR)
+    if yeo_n == 17:
+        return list(_YEO17_ABBR)
+    raise ValueError(f"yeo_n must be 7 or 17, got {yeo_n}")
+
+
+# ---------- Schaefer / Glasser helpers ----------
 
 def _load_label_gii(path: str):
     g = nib.load(path)
@@ -62,6 +84,7 @@ def _load_label_gii(path: str):
 
 
 def _schaefer7_from_name(name: str) -> int:
+    """Map a Schaefer 7Networks label name to a 0-based Yeo-7 index."""
     n = name.lower()
     if "vis" in n:
         return 0
@@ -82,23 +105,73 @@ def _schaefer7_from_name(name: str) -> int:
     raise ValueError(f"Unrecognized Schaefer-7 network in label name: {name}")
 
 
+def _schaefer17_from_name(name: str) -> int:
+    """
+    Map a Schaefer 17Networks label name (e.g.
+    '17Networks_LH_VisCent_ExStr_1', '17Networks_RH_DefaultA_IPL_1') to a
+    0-based Yeo-17 index in the canonical order:
+
+        0:  VisCent (VisualA)
+        1:  VisPeri (VisualB)
+        2:  SomMotA
+        3:  SomMotB
+        4:  DorsAttnA
+        5:  DorsAttnB
+        6:  SalVentAttnA
+        7:  SalVentAttnB
+        8:  LimbicA  (TempPole)
+        9:  LimbicB  (OFC)
+        10: ContA
+        11: ContB
+        12: ContC
+        13: DefaultA
+        14: DefaultB
+        15: DefaultC
+        16: TempPar
+    """
+    n = name.lower()
+
+    # Order matters: more specific tokens before their substrings.
+    if "viscent" in n:
+        return 0
+    if "visperi" in n:
+        return 1
+    if "sommota" in n or "sommot_a" in n:
+        return 2
+    if "sommotb" in n or "sommot_b" in n:
+        return 3
+    if "dorsattna" in n or "dorsattn_a" in n:
+        return 4
+    if "dorsattnb" in n or "dorsattn_b" in n:
+        return 5
+    if "salventattna" in n or "salventattn_a" in n:
+        return 6
+    if "salventattnb" in n or "salventattn_b" in n:
+        return 7
+    if "limbica" in n or "limbic_a" in n or "temppole" in n:
+        return 8
+    if "limbicb" in n or "limbic_b" in n or "limbic_ofc" in n:
+        return 9
+    if "conta" in n or "cont_a" in n:
+        return 10
+    if "contb" in n or "cont_b" in n:
+        return 11
+    if "contc" in n or "cont_c" in n:
+        return 12
+    if "defaulta" in n or "default_a" in n:
+        return 13
+    if "defaultb" in n or "default_b" in n:
+        return 14
+    if "defaultc" in n or "default_c" in n:
+        return 15
+    if "temppar" in n:
+        return 16
+
+    raise ValueError(f"Unrecognized Schaefer-17 network in label name: {name}")
+
+
 def _glasser7_from_name(name: str) -> int:
-    """
-    Map a Glasser/HCP-MMP1.0 network label (e.g. 'Visual', 'Somatomotor',
-    'Dorsal Attention', 'Ventral Attention', 'Limbic', 'Frontoparietal',
-    'Default') to a 0-based Yeo-7 index:
-
-        0: Visual
-        1: Somatomotor
-        2: Dorsal Attention
-        3: Ventral Attention / Salience
-        4: Limbic
-        5: Frontoparietal / Control
-        6: Default
-
-    Accepts either the bare network name or the full line from the
-    cortex_parcel_network_assignments_Yeo7.txt file.
-    """
+    """Map a Glasser/HCP-MMP1.0 Yeo-7 label name to a 0-based Yeo-7 index."""
     n = name.lower().strip()
 
     if "visual" in n:
@@ -120,24 +193,82 @@ def _glasser7_from_name(name: str) -> int:
     raise ValueError(f"Unrecognized Glasser-7/Yeo7 network in label name: {name}")
 
 
+def _glasser17_from_name(name: str) -> int:
+    """
+    Map a Glasser/HCP-MMP1.0 Yeo-17 label name to a 0-based Yeo-17 index.
+
+    Accepts either the bare Yeo-17 network name or the full line from the
+    cortex_parcel_network_assignments_Yeo17.txt file. The network token is
+    expected as the trailing _-separated component (or anywhere in the name)
+    and is matched case-insensitively against the canonical Yeo-17 names.
+    """
+    n = name.lower().strip()
+
+    if "viscent" in n or "visualcent" in n or "visual_a" in n or "visa" in n:
+        return 0
+    if "visperi" in n or "visualperi" in n or "visual_b" in n or "visb" in n:
+        return 1
+    if "sommota" in n or "somatomotor_a" in n or "sommot_a" in n or "motor_a" in n:
+        return 2
+    if "sommotb" in n or "somatomotor_b" in n or "sommot_b" in n or "motor_b" in n:
+        return 3
+    if "dorsattna" in n or "dorsattn_a" in n or "dorsalattn_a" in n:
+        return 4
+    if "dorsattnb" in n or "dorsattn_b" in n or "dorsalattn_b" in n:
+        return 5
+    if "salventattna" in n or "salventattn_a" in n or "salience_a" in n:
+        return 6
+    if "salventattnb" in n or "salventattn_b" in n or "salience_b" in n:
+        return 7
+    if "limbica" in n or "limbic_a" in n or "temppole" in n:
+        return 8
+    if "limbicb" in n or "limbic_b" in n or "limbic_ofc" in n or " ofc" in n:
+        return 9
+    if "conta" in n or "cont_a" in n or "control_a" in n:
+        return 10
+    if "contb" in n or "cont_b" in n or "control_b" in n:
+        return 11
+    if "contc" in n or "cont_c" in n or "control_c" in n:
+        return 12
+    if "defaulta" in n or "default_a" in n:
+        return 13
+    if "defaultb" in n or "default_b" in n:
+        return 14
+    if "defaultc" in n or "default_c" in n:
+        return 15
+    if "temppar" in n or "temporoparietal" in n or "tempparoccip" in n:
+        return 16
+
+    raise ValueError(f"Unrecognized Glasser-17/Yeo17 network in label name: {name}")
+
+
+def _net_from_name(name: str, yeo_n: int, atlas_kind: str) -> int:
+    """Dispatch helper: name -> 0-based Yeo network index."""
+    if atlas_kind == "schaefer":
+        if yeo_n == 7:
+            return _schaefer7_from_name(name)
+        if yeo_n == 17:
+            return _schaefer17_from_name(name)
+    elif atlas_kind == "glasser":
+        if yeo_n == 7:
+            return _glasser7_from_name(name)
+        if yeo_n == 17:
+            return _glasser17_from_name(name)
+    raise ValueError(f"Bad atlas_kind/yeo_n: {atlas_kind}/{yeo_n}")
+
+
 def _load_glasser_yeo7_assignments(
         path: str = "cortex_parcel_network_assignments_Yeo7.txt"
 ) -> np.ndarray:
     """
-    Load Yeo-7 assignments for the 360 Glasser/HCP-MMP parcels from the
-    text file cortex_parcel_network_assignments_Yeo7.txt.
-
-    File format (one parcel per line), e.g.:
+    Load Yeo-7 assignments for the 360 Glasser/HCP-MMP parcels from a file
+    where each line is e.g.
 
         1_R_V1_ROI_1_Visual
         10_R_FEF_ROI_3_Dorsal Attention
         ...
 
-    Returns
-    -------
-    networks0 : (N,) int array
-        0-based Yeo-7 network index per parcel (N should be 360).
-        Order is the line order in the file (1..360).
+    The trailing "_"-token is the network name.
     """
     networks: list[int] = []
     with open(path, "r") as f:
@@ -146,7 +277,7 @@ def _load_glasser_yeo7_assignments(
             if not line or line.startswith("#"):
                 continue
             parts = line.split("_")
-            net_label = parts[-1]  # e.g. 'Visual', 'Somatomotor', 'Dorsal Attention'
+            net_label = parts[-1]
             net_idx = _glasser7_from_name(net_label)
             networks.append(net_idx)
 
@@ -158,158 +289,140 @@ def _load_glasser_yeo7_assignments(
         )
     return networks0
 
-# ---------- 2D embedding colored by RSNs & layers ----------
 
-def plot_two_dim_embedding(
-        eigvecs: np.ndarray,
-        out_dir,
-        name: str,
-        eigvecs_to_plot: Tuple[int, int] = (0, 1),
-        layer_labels: Optional[List[str]] = None,
-        network_labels: Optional[List[str]] = None,
-        x_label: str = "Emb1",
-        y_label: str = "Emb2",
-        network_cmap: str = "tab20",
-        atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
-) -> None:
+def _load_glasser_yeo17_assignments(
+        path: str = "cortex_parcel_network_assignments_Yeo17.txt"
+) -> np.ndarray:
     """
-    2D embedding coloured by RSNs (Schaefer-7 or Glasser/Yeo-7) and optionally by layer.
+    Load Yeo-17 assignments for the 360 Glasser/HCP-MMP parcels from a file
+    with the same layout as the Yeo-7 version, e.g.
+
+        1_R_V1_ROI_1_VisCent
+        10_R_FEF_ROI_3_DorsAttnB
+        ...
+
+    The trailing "_"-token is the Yeo-17 network name. See top-of-file
+    notes for how to generate this file from the Yeo-17 partition.
+
+    Returns
+    -------
+    networks0 : (N,) int array
+        0-based Yeo-17 network index per parcel (1..360 for Glasser).
     """
-    out_dir = Path(out_dir) / name
-    out_dir.mkdir(parents=True, exist_ok=True)
+    networks: list[int] = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("_")
+            net_label = parts[-1]
+            net_idx = _glasser17_from_name(net_label)
+            networks.append(net_idx)
+
+    networks0 = np.asarray(networks, dtype=int)
+    if networks0.min() < 0 or networks0.max() > 16:
+        raise ValueError(
+            f"Yeo-17 assignments in {path} must be in [0..16] after mapping, "
+            f"found range [{networks0.min()}, {networks0.max()}]."
+        )
+    return networks0
+
+
+def _get_yeo_assignments(
+        atlas: str,
+        yeo_n: int = 7,
+        schaefer_label_L: Optional[str] = None,
+        schaefer_label_R: Optional[str] = None,
+        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+) -> Tuple[np.ndarray, List[str]]:
+    """
+    Unified helper: returns (networks0, default_labels) for the requested
+    atlas + Yeo partition.
+
+    For Schaefer this reads Yeo membership directly from the .label.gii
+    label names, so make sure the *.label.gii files you pass come from the
+    matching Schaefer 7Networks vs 17Networks parcellation:
+
+        yeo_n=7  -> Schaefer2018_400Parcels_7Networks_order
+        yeo_n=17 -> Schaefer2018_400Parcels_17Networks_order
+
+    For Glasser, this reads from the corresponding text file:
+
+        yeo_n=7  -> cortex_parcel_network_assignments_Yeo7.txt
+        yeo_n=17 -> cortex_parcel_network_assignments_Yeo17.txt
+    """
+    if yeo_n not in (7, 17):
+        raise ValueError(f"yeo_n must be 7 or 17, got {yeo_n}")
 
     atlas_lower = atlas.lower()
+    labels = _yeo_default_labels(yeo_n)
 
-    # ----- RSN assignments per parcel -----
     if atlas_lower == "schaefer":
         if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("Provide schaefer_label_L and schaefer_label_R (.label.gii).")
-
+            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
         L_lab, L_map = _load_label_gii(schaefer_label_L)
         R_lab, R_map = _load_label_gii(schaefer_label_R)
         uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
         uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
 
-        networks0 = []
+        nets0 = []
         for k in uL:
-            networks0.append(_schaefer7_from_name(L_map[k]))
+            nets0.append(_net_from_name(L_map[k], yeo_n, "schaefer"))
         for k in uR:
-            networks0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(networks0, dtype=int)
-        N = networks0.size
-
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Control", "Default"
-            ]
+            nets0.append(_net_from_name(R_map[k], yeo_n, "schaefer"))
+        networks0 = np.asarray(nets0, dtype=int)
 
     elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Frontoparietal", "Default"
-            ]
+        if yeo_n == 7:
+            networks0 = _load_glasser_yeo7_assignments(glasser_yeo7_path)
+        else:
+            networks0 = _load_glasser_yeo17_assignments(glasser_yeo17_path)
     else:
         raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
 
-    # ----- single vs multilayer -----
-    nrows, ndims = eigvecs.shape
-    if nrows == 3 * N:
-        mode = "multilayer"
-    elif nrows == N:
-        mode = "single"
-    elif nrows % 3 == 0 and nrows // 3 == N:
-        mode = "multilayer"
+    return networks0, labels
+
+
+def _network_colours(yeo_n: int, network_cmap: str = "tab20") -> List:
+    """
+    Return a list of colours, one per Yeo network.
+
+    For Yeo-7 we use a 7-shade selection from `network_cmap` and reorder
+    them so that adjacent networks aren't visually similar (matches the
+    original behaviour of the file). For Yeo-17 we use 17 distinct shades
+    from `network_cmap` (typically tab20).
+    """
+    try:
+        seq_cmap = plt.get_cmap(network_cmap)
+    except Exception:
+        seq_cmap = plt.get_cmap("tab20")
+
+    if yeo_n == 7:
+        shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
+        order_idx = [1, 0, 3, 2, 6, 5, 4]
+        net_colours = [None] * 7
+        for rank, net_idx in enumerate(order_idx):
+            net_colours[net_idx] = shades[rank]
+        return net_colours
+
+    if yeo_n == 17:
+        # Prefer discrete tab20-style colormaps when possible.
+        if network_cmap in ("tab20", "tab20b", "tab20c"):
+            return [seq_cmap(i % 20) for i in range(17)]
+        return [seq_cmap(i / 16.0) for i in range(17)]
+
+    raise ValueError(f"yeo_n must be 7 or 17, got {yeo_n}")
+
+
+def _legend_order(yeo_n: int, present: set) -> List[int]:
+    """Return a nice legend ordering for the present Yeo networks."""
+    if yeo_n == 7:
+        order = [1, 0, 3, 2, 6, 5, 4]
     else:
-        raise ValueError(f"eigvecs has {nrows} rows, but atlas implies N={N} or 3N={3*N}.")
-
-    x_dim, y_dim = eigvecs_to_plot
-    if x_dim >= ndims or y_dim >= ndims:
-        x_dim = max(0, x_dim - 1)
-        y_dim = max(0, y_dim - 1)
-    if not (0 <= x_dim < ndims and 0 <= y_dim < ndims):
-        raise ValueError(f"Requested dims {eigvecs_to_plot} not in [0..{ndims-1}]")
-
-    if mode == "multilayer":
-        networks = np.tile(networks0, 3)
-        layers = np.repeat([0, 1, 2], N)
-    else:
-        networks = networks0
-        layers = np.zeros(N, dtype=int)
-
-    if isinstance(layer_labels, str):
-        layer_labels = [layer_labels]
-    if layer_labels is None:
-        layer_labels = ["Superficial", "Middle", "Deep"] if mode == "multilayer" else ["AcrossLayers"]
-    elif mode == "single" and len(layer_labels) != 1:
-        layer_labels = [layer_labels[0]]
-
-    base_cmap = plt.get_cmap(network_cmap, len(network_labels))
-    network_colors = [base_cmap(i) for i in range(len(network_labels))]
-    shapes = ["o", "s", "^"] if mode == "multilayer" else ["o"]
-
-    fig, ax = plt.subplots(figsize=(7, 7))
-    unique_layers = np.unique(layers)
-    unique_nets = np.unique(networks)
-
-    for lyr in unique_layers:
-        for net in unique_nets:
-            mask = (layers == lyr) & (networks == net)
-            if not np.any(mask):
-                continue
-            ax.scatter(
-                eigvecs[mask, x_dim],
-                eigvecs[mask, y_dim],
-                s=10,
-                marker=shapes[int(lyr if mode == "multilayer" else 0)],
-                facecolor=network_colors[int(net)],
-                edgecolor="k",
-                linewidths=0.2,
-                alpha=0.85
-            )
-
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    ax.set_title("Embedding coloured by Yeo-7 RSN; shapes = layers"
-                 if mode == "multilayer"
-                 else "Embedding coloured by Yeo-7 RSN")
-    ax.set_aspect("equal", adjustable="box")
-
-    # Layer legend
-    if mode == "multilayer":
-        layer_handles = [
-            Line2D([0], [0], marker=shapes[i], color="w", markeredgecolor="k",
-                   markersize=9, label=layer_labels[int(lyr)])
-            for i, lyr in enumerate(unique_layers)
-        ]
-        leg1 = ax.legend(handles=layer_handles, title="Layer", loc="upper right")
-        ax.add_artist(leg1)
-
-    # RSN legend
-    network_handles = [
-        Line2D([0], [0], marker="o", color="w",
-               markerfacecolor=network_colors[int(i)], markeredgecolor="k",
-               markersize=9, label=network_labels[int(i)])
-        for i in unique_nets
-    ]
-    ax.legend(handles=network_handles, title="RSN",
-              bbox_to_anchor=(1.32, 1), loc="upper left")
-
-    plt.tight_layout()
-    eigstr = f"{x_dim}{y_dim}"
-    suffix = "_multi" if mode == "multilayer" else "_single"
-    outpath = out_dir / f"Embedding_withNetworks_{eigstr}{suffix}.png"
-    fig.savefig(outpath, bbox_inches="tight", dpi=500)
-    plt.close(fig)
-    print("Saved embedding plot to:", outpath)
-
+        order = list(range(17))
+    return [i for i in order if i in present]
 
 
 # ---------- 2D scatter with regression & marginals ----------
@@ -327,8 +440,11 @@ def plot_scatter_with_global_correlation(
         network_cmap: str = "tab20",
         dot_size: int = 40,
         atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+        yeo_n: int = 7,
+        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
+        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
+        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
         show_marginal_hists: bool = True,
         hist_bins: int = 30,
         hist_size: float = 0.1,
@@ -341,47 +457,19 @@ def plot_scatter_with_global_correlation(
         return_stats: bool = False,
 ):
     """
-    2D scatter with regression line and global Pearson r, coloured by Yeo-7 RSNs.
+    2D scatter with regression line and global Pearson r, coloured by Yeo RSNs.
     """
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    atlas_lower = atlas.lower()
-
-    # ----- RSN assignments -----
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-
-        networks0 = []
-        for k in uL:
-            networks0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            networks0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(networks0, dtype=int)
-        N = networks0.size
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Control", "Default"
-            ]
-
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Frontoparietal", "Default"
-            ]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
+    networks0, default_labels = _get_yeo_assignments(
+        atlas=atlas, yeo_n=yeo_n,
+        schaefer_label_L=schaefer_label_L, schaefer_label_R=schaefer_label_R,
+        glasser_yeo7_path=glasser_yeo7_path, glasser_yeo17_path=glasser_yeo17_path,
+    )
+    N = networks0.size
+    if network_labels is None:
+        network_labels = default_labels
 
     # ----- rows vs layers -----
     nrows, ndims = eigvecs.shape
@@ -413,19 +501,7 @@ def plot_scatter_with_global_correlation(
         if layer_labels is None:
             layer_labels = ["AcrossLayers"]
 
-    # ----- colours per RSN -----
-    seq_cmap = matplotlib.cm.get_cmap(network_cmap)
-    n_nets = int(nets.max()) + 1
-    if len(network_labels) == 7:
-        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]  # just for nicer separation
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
-    else:
-        if n_nets < 1:
-            raise ValueError("No networks found.")
-        net_colours = [seq_cmap(i / max(n_nets - 1, 1)) for i in range(n_nets)]
+    net_colours = _network_colours(yeo_n, network_cmap)
 
     # ----- layout -----
     if show_marginal_hists:
@@ -484,7 +560,7 @@ def plot_scatter_with_global_correlation(
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
-    ax.set_title("Embedding coloured by Yeo-7 RSN" +
+    ax.set_title(f"Embedding coloured by Yeo-{yeo_n} RSN" +
                  (" (layers as shapes)" if mode == "multilayer" else ""))
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlim(0.0, 1.0)
@@ -527,9 +603,10 @@ def plot_scatter_with_global_correlation(
             ax_histy.spines[spine].set_visible(False)
 
     # ----- legends -----
-    if len(network_labels) < n_nets:
+    n_nets_present = int(nets.max()) + 1
+    if len(network_labels) < n_nets_present:
         network_labels = list(network_labels) + [
-            f"Net{i}" for i in range(len(network_labels), n_nets)
+            f"Net{i}" for i in range(len(network_labels), n_nets_present)
         ]
 
     net_handles = [
@@ -553,7 +630,7 @@ def plot_scatter_with_global_correlation(
         ax.add_artist(ax.legend(handles=lyr_handles, title="Layer", loc="upper right"))
 
     if fname is None:
-        fname = f"ScatterCorr_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}.png"
+        fname = f"ScatterCorr_yeo{yeo_n}_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}.png"
     fig.tight_layout()
     outpath = out_dir / fname
     fig.savefig(outpath, dpi=500, bbox_inches="tight")
@@ -576,6 +653,7 @@ def plot_scatter_with_global_correlation(
             "ci_level": float(ci_level),
             "band_kind": band_kind.lower(),
         }
+
 
 # ---------- 3D scatter with plane & marginals ----------
 
@@ -600,48 +678,30 @@ def plot_scatter3D_with_plane(
         proj_type: str = "ortho",
         plane_alpha: float = 0.18,
         atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+        yeo_n: int = 7,
+        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
+        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
+        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
         show_marginals: bool = True,
         hist_bins: int = 20,
 ):
     """
-    3D embedding coloured by Yeo-7 RSNs, optional best-fit plane and marginals.
+    3D embedding coloured by Yeo RSNs, optional best-fit plane and marginals.
     """
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ----- RSN assignments -----
-    atlas_lower = atlas.lower()
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-        nets0 = []
-        for k in uL:
-            nets0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            nets0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(nets0, int)
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Control", "Default"]
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Frontoparietal", "Default"]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
+    networks0, default_labels = _get_yeo_assignments(
+        atlas=atlas, yeo_n=yeo_n,
+        schaefer_label_L=schaefer_label_L, schaefer_label_R=schaefer_label_R,
+        glasser_yeo7_path=glasser_yeo7_path, glasser_yeo17_path=glasser_yeo17_path,
+    )
+    N = networks0.size
+    if network_labels is None:
+        network_labels = default_labels
 
     def _from_matrix(M, dims):
         nrows, ndims = M.shape
@@ -684,20 +744,7 @@ def plot_scatter3D_with_plane(
         if layer_labels is None:
             layer_labels = ["AcrossLayers"]
 
-    # ----- colours -----
-    if len(network_labels) == 7:
-        try:
-            seq_cmap = plt.get_cmap(network_cmap)
-        except Exception:
-            seq_cmap = plt.get_cmap("tab20")
-        shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
-    else:
-        cmap = plt.get_cmap(network_cmap, len(network_labels))
-        net_colours = [cmap(i) for i in range(len(network_labels))]
+    net_colours = _network_colours(yeo_n, network_cmap)
 
     fig = plt.figure(figsize=(8.8, 8.0))
 
@@ -730,7 +777,7 @@ def plot_scatter3D_with_plane(
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_zlabel(z_label)
-    ax.set_title("3D Embedding coloured by Yeo-7 RSN" +
+    ax.set_title(f"3D Embedding coloured by Yeo-{yeo_n} RSN" +
                  (" (layers as shapes)" if mode == "multilayer" else ""))
 
     def _safe_range(lo, hi):
@@ -829,11 +876,8 @@ def plot_scatter3D_with_plane(
               fontsize=7, bbox=bbox_props)
 
     # ----- legends -----
-    if len(network_labels) == 7:
-        present = set(int(i) for i in np.unique(nets))
-        legend_order = [i for i in [1, 0, 3, 2, 6, 5, 4] if i in present]
-    else:
-        legend_order = list(int(i) for i in np.unique(nets))
+    present = set(int(i) for i in np.unique(nets))
+    legend_order = _legend_order(yeo_n, present)
 
     net_handles = [Line2D([0], [0], marker="o", color="w",
                           markerfacecolor=net_colours[i], markeredgecolor="k",
@@ -853,9 +897,9 @@ def plot_scatter3D_with_plane(
     if fname is None:
         if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
             i, j, k = dims_to_plot
-            fname = f"Scatter3D_d{i+1}{j+1}{k+1}_{'multi' if mode=='multilayer' else 'single'}.png"
+            fname = f"Scatter3D_yeo{yeo_n}_d{i+1}{j+1}{k+1}_{'multi' if mode=='multilayer' else 'single'}.png"
         else:
-            fname = f"Scatter3D_{'multi' if mode=='multilayer' else 'single'}.png"
+            fname = f"Scatter3D_yeo{yeo_n}_{'multi' if mode=='multilayer' else 'single'}.png"
 
     if not show_marginals:
         fig.tight_layout()
@@ -882,45 +926,26 @@ def plot_scatter_centroids(
         dot_size: int = 60,
         annotate: bool = False,
         atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+        yeo_n: int = 7,
+        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
+        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
+        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
 ):
     """
-    2D centroids (RSN × layer) for Yeo-7 networks.
+    2D centroids (RSN × layer) for Yeo-7 / Yeo-17 networks.
     """
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    atlas_lower = atlas.lower()
-
-    # ----- per-parcel RSN vector -----
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-        networks0 = []
-        for k in uL:
-            networks0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            networks0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(networks0, dtype=int)
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Control", "Default"]
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Frontoparietal", "Default"]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
+    networks0, default_labels = _get_yeo_assignments(
+        atlas=atlas, yeo_n=yeo_n,
+        schaefer_label_L=schaefer_label_L, schaefer_label_R=schaefer_label_R,
+        glasser_yeo7_path=glasser_yeo7_path, glasser_yeo17_path=glasser_yeo17_path,
+    )
+    N = networks0.size
+    if network_labels is None:
+        network_labels = default_labels
 
     nrows, ndims = eigvecs.shape
     if nrows == 3 * N:
@@ -951,21 +976,7 @@ def plot_scatter_centroids(
         if layer_labels is None:
             layer_labels = ["AcrossLayers"]
 
-    # ----- colours -----
-    seq_cmap = matplotlib.cm.get_cmap(network_cmap)
-    n_nets = int(nets.max()) + 1
-    if len(network_labels) == 7:
-        if n_nets > 7:
-            raise ValueError(f"Expected at most 7 networks, found {n_nets}")
-        shades = [seq_cmap(x) for x in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
-    else:
-        if n_nets < 1:
-            raise ValueError("No networks found.")
-        net_colours = [seq_cmap(i / max(n_nets - 1, 1)) for i in range(n_nets)]
+    net_colours = _network_colours(yeo_n, network_cmap)
 
     uniq_layers = np.unique(layers)
     uniq_nets = np.unique(nets)
@@ -984,11 +995,12 @@ def plot_scatter_centroids(
                               float(np.mean(xy[:, 1])),
                               int(xy.shape[0])))
 
-    stem = Path(fname).stem
+    stem = Path(fname).stem if fname else f"centroids_yeo{yeo_n}"
     pd.DataFrame(centroids, columns=["layer", "network", "x_centroid", "y_centroid", "n_parcels"])\
     .to_csv(out_dir / f"{stem}_centroids.csv", index=False)
 
     fig, ax = plt.subplots(figsize=(7, 7))
+    xm = ym = 0.0
     for lyr, net, xm, ym, cnt in centroids:
         ax.scatter(xm, ym,
                    s=dot_size,
@@ -1008,7 +1020,7 @@ def plot_scatter_centroids(
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
-    ax.set_title("Centroids by Yeo-7 RSN" +
+    ax.set_title(f"Centroids by Yeo-{yeo_n} RSN" +
                  (" (layers as shapes)" if mode == "multilayer" else ""))
 
     net_handles = [Line2D([0], [0], marker="o", color="w",
@@ -1026,7 +1038,7 @@ def plot_scatter_centroids(
         ax.add_artist(ax.legend(handles=lyr_handles, title="Layer", loc="upper right"))
 
     if fname is None:
-        fname = f"ScatterCentroids_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}_unitaxes.png"
+        fname = f"ScatterCentroids_yeo{yeo_n}_d{x_dim+1}{y_dim+1}_{'multi' if mode=='multilayer' else 'single'}_unitaxes.png"
     fig.tight_layout()
     path = out_dir / fname
     fig.savefig(path, dpi=500, bbox_inches="tight")
@@ -1034,6 +1046,7 @@ def plot_scatter_centroids(
     print("Saved:", path)
 
     return xm, ym
+
 
 # ---------- Network-centroid 3D cycle ----------
 
@@ -1061,49 +1074,29 @@ def plot_network_centroids3D(
         print_coords: bool = True,
         return_coords: bool = True,
         atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+        yeo_n: int = 7,
+        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
+        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
+        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
 ):
     """
-    3D Yeo-7 network centroids (single point per RSN), joined by a non-crossing cycle.
+    3D Yeo network centroids (single point per RSN), joined by a non-crossing cycle.
     """
     import csv
-    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ----- RSN assignments -----
-    atlas_lower = atlas.lower()
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-        nets0 = []
-        for k in uL:
-            nets0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            nets0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(nets0, int)
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Control", "Default"]
-        net_abbr = ["VIS", "SOM", "DAN", "VAN", "LIM", "CON", "DMN"]
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-        if network_labels is None:
-            network_labels = ["Visual", "Somatomotor", "Dorsal Attn",
-                              "Ventral/Salience", "Limbic", "Frontoparietal", "Default"]
-        net_abbr = ["VIS", "SOM", "DAN", "VAN", "LIM", "FPN", "DMN"]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
+    networks0, default_labels = _get_yeo_assignments(
+        atlas=atlas, yeo_n=yeo_n,
+        schaefer_label_L=schaefer_label_L, schaefer_label_R=schaefer_label_R,
+        glasser_yeo7_path=glasser_yeo7_path, glasser_yeo17_path=glasser_yeo17_path,
+    )
+    N = networks0.size
+    if network_labels is None:
+        network_labels = default_labels
+    net_abbr = _yeo_default_abbr(yeo_n)
 
     def _from_matrix(M, dims):
         nrows, ndims = M.shape
@@ -1140,7 +1133,7 @@ def plot_network_centroids3D(
     else:
         x_par, y_par, z_par = x, y, z
 
-    kvals = np.array(sorted(np.unique(networks0)))  # 0..6 subset
+    kvals = np.array(sorted(np.unique(networks0)))
     K = len(kvals)
     cx = np.zeros(K)
     cy = np.zeros(K)
@@ -1165,7 +1158,7 @@ def plot_network_centroids3D(
     CX, CY, CZ = cx[finite], cy[finite], cz[finite]
     Kf = idx_map.size
 
-    # ----- project to 2D -----
+    # ----- project to 2D for non-crossing test -----
     P = np.vstack([CX, CY, CZ]).T
     P -= P.mean(axis=0, keepdims=True)
     U, S, Vt = np.linalg.svd(P, full_matrices=False)
@@ -1258,7 +1251,6 @@ def plot_network_centroids3D(
         if len(edges) == Kf:
             break
 
-    # fallback: simple angular cycle if MST-like attempt failed
     if not (len(edges) == Kf and np.all(deg == 2)):
         edges = []
         deg[:] = 0
@@ -1277,25 +1269,11 @@ def plot_network_centroids3D(
     except Exception:
         pass
 
-    # colours
-    if len(network_labels) == 7:
-        try:
-            seq_cmap = plt.get_cmap(network_cmap)
-        except Exception:
-            seq_cmap = plt.get_cmap("tab20")
-        shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]
-        net_colours = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours[net_idx] = shades[rank]
-    else:
-        cmap = plt.get_cmap(network_cmap, len(network_labels))
-        net_colours = [cmap(i) for i in range(len(network_labels))]
+    net_colours = _network_colours(yeo_n, network_cmap)
 
-    # plot centroids
     for local_idx, g_idx in enumerate(idx_map):
-        net_idx = int(kvals[g_idx])  # 0..6
-        if 0 <= net_idx < len(net_abbr):
+        net_idx = int(kvals[g_idx])
+        if 0 <= net_idx < len(net_colours):
             col = net_colours[net_idx]
         else:
             col = net_colours[net_idx % len(net_colours)]
@@ -1307,7 +1285,6 @@ def plot_network_centroids3D(
     if annotate:
         for local_idx, g_idx in enumerate(idx_map):
             kidx = int(kvals[g_idx])
-            # safe abbreviation lookup
             if 0 <= kidx < len(net_abbr):
                 short = net_abbr[kidx]
             else:
@@ -1315,7 +1292,6 @@ def plot_network_centroids3D(
             ax.text(CX[local_idx], CY[local_idx], CZ[local_idx],
                     f"  {short}", fontsize=8, va="center")
 
-    # draw cycle edges
     for (i, j) in edges:
         ax.plot([CX[i], CX[j]], [CY[i], CY[j]], [CZ[i], CZ[j]],
                 color="gray", alpha=line_alpha, lw=2.0)
@@ -1323,7 +1299,7 @@ def plot_network_centroids3D(
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_zlabel(z_label)
-    ax.set_title("Network centroids (Yeo-7, non-crossing 2-regular cycle)")
+    ax.set_title(f"Network centroids (Yeo-{yeo_n}, non-crossing 2-regular cycle)")
 
     def _cube_limits(xs, ys, zs):
         xlo, xhi = np.nanmin(xs), np.nanmax(xs)
@@ -1347,35 +1323,29 @@ def plot_network_centroids3D(
 
     ax.view_init(elev=22, azim=38)
 
-    # Legend
     present = set(int(kvals[g_idx]) for g_idx in idx_map)
-    if len(network_labels) == 7:
-        legend_order = [i for i in [1, 0, 3, 2, 6, 5, 4] if i in present]
-    else:
-        legend_order = [k for k in range(len(network_labels)) if k in present]
+    legend_order = _legend_order(yeo_n, present)
 
     handles = [Line2D([0], [0], marker="o", color="w",
-                      markerfacecolor=(net_colours[k] if len(network_labels) == 7
+                      markerfacecolor=(net_colours[k] if 0 <= k < len(net_colours)
                                        else net_colours[k % len(net_colours)]),
                       markeredgecolor="k", markersize=8,
                       label=(network_labels[k] if 0 <= k < len(network_labels) else f"Net {k}"))
                for k in legend_order]
     ax.legend(handles=handles, title="RSN", loc="upper right")
 
-    # ----- save figure -----
     if fname is None:
         if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
             i, j, k = dims_to_plot
-            fname = f"NetCentroids3D_d{i+1}{j+1}{k+1}.png"
+            fname = f"NetCentroids3D_yeo{yeo_n}_d{i+1}{j+1}{k+1}.png"
         else:
-            fname = "NetCentroids3D.png"
+            fname = f"NetCentroids3D_yeo{yeo_n}.png"
     fig.tight_layout()
     fpath = out_dir / fname
     fig.savefig(fpath, dpi=500, bbox_inches="tight")
     plt.close(fig)
     print("Saved:", fpath)
 
-    # ----- export coordinates -----
     rows = []
     for idx, k in enumerate(kvals):
         rows.append({
@@ -1391,9 +1361,9 @@ def plot_network_centroids3D(
         if coords_fname is None:
             if Y is None and Z is None and getattr(X, "ndim", 1) == 2:
                 i, j, k = dims_to_plot
-                coords_fname = f"NetCentroids3D_d{i+1}{j+1}{k+1}_coords.csv"
+                coords_fname = f"NetCentroids3D_yeo{yeo_n}_d{i+1}{j+1}{k+1}_coords.csv"
             else:
-                coords_fname = "NetCentroids3D_coords.csv"
+                coords_fname = f"NetCentroids3D_yeo{yeo_n}_coords.csv"
         cpath = out_dir / coords_fname
         with open(cpath, "w", newline="") as f:
             w = csv.writer(f)
@@ -1415,566 +1385,7 @@ def plot_network_centroids3D(
     return rows if return_coords else None
 
 
-
-# ---------- eigvecs -> NIfTI & surface ----------
-
-def plot_on_mmhcp_surface_multipleLayers(
-        Xp: np.ndarray,
-        out_dir,
-        eigValue,
-        vmin=None,
-        vmax=None,
-        cm: str = "cividis",
-        noSubcortical: bool = True,
-        titles: List[str] = None,
-        folder_name: str = "surface_map",
-        atlas: str = "schaefer",
-        schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-        schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
-):
-
-    out_dir = Path(out_dir)
-    os.makedirs(out_dir / folder_name, exist_ok=True)
-
-    if titles is None:
-        titles = ["Deep", "Middle", "Superficial", "Average"]
-
-    def _build_rank_map(keys):
-        u = np.unique(keys[keys > 0])
-        return {k: i for i, k in enumerate(sorted(u))}, len(u)
-
-    def _map_parcels_to_vertices_schaefer(vals_lr, L_lab, R_lab, L_rank, R_rank, n_hemi):
-        left = np.full(L_lab.shape, np.nan, float)
-        mL = L_lab > 0
-        if np.any(mL):
-            idxL = np.array([L_rank[k] for k in L_lab[mL]])
-            left[mL] = vals_lr[idxL]
-        right = np.full(R_lab.shape, np.nan, float)
-        mR = R_lab > 0
-        if np.any(mR):
-            idxR = np.array([R_rank[k] for k in R_lab[mR]])
-            right[mR] = vals_lr[n_hemi + idxR]
-        return left, right
-
-    if atlas.lower() == "mmp":
-        mmp_labels = hcp.mmp.labels
-        n_parcels_target = len(mmp_labels)
-
-        def map_layer(vals_lr):
-            vtx_both = hcp.cortex_data(hcp.unparcellate(vals_lr, hcp.mmp))
-            nL = len(vtx_both) // 2
-            return vtx_both[:nL], vtx_both[nL:]
-        
-    elif atlas.lower() == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-        L_lab = nib.load(schaefer_label_L).agg_data().squeeze().astype(int)
-        R_lab = nib.load(schaefer_label_R).agg_data().squeeze().astype(int)
-        L_rank, nL_parcels = _build_rank_map(L_lab)
-        R_rank, nR_parcels = _build_rank_map(R_lab)
-        assert nL_parcels == nR_parcels, f"Unequal parcels per hemi: L={nL_parcels}, R={nR_parcels}"
-        n_parcels_target = 2 * nL_parcels
-
-        def map_layer(vals_lr):
-            return _map_parcels_to_vertices_schaefer(vals_lr, L_lab, R_lab, L_rank, R_rank, nL_parcels)
-    else:
-        raise ValueError("atlas must be 'mmp' or 'schaefer'.")
-
-    Xp = np.asarray(Xp)
-    if Xp.ndim != 2:
-        raise ValueError("Xp must be 2D (n_parcels, n_layers).")
-    current_length = Xp.shape[0]
-    if noSubcortical:
-        zeros_to_add = n_parcels_target - current_length
-        if zeros_to_add > 0:
-            Xp = np.concatenate((Xp, np.zeros((zeros_to_add, Xp.shape[1]))), axis=0)
-        elif zeros_to_add < 0:
-            raise ValueError(f"Xp has {current_length} rows but atlas expects {n_parcels_target}.")
-    else:
-        if current_length != n_parcels_target:
-            raise ValueError(f"Xp has {current_length} rows but atlas expects {n_parcels_target}.")
-
-    left_right_layers = []
-    for i in range(Xp.shape[1]):
-        left_i, right_i = map_layer(Xp[:, i])
-        left_right_layers.append((left_i, right_i))
-
-    all_data = np.hstack([np.concatenate((L, R)) for (L, R) in left_right_layers])
-    if vmin is None or vmax is None:
-        finite = np.isfinite(all_data)
-        if not np.any(finite):
-            raise ValueError("All mapped values NaN.")
-        vmin, vmax = np.nanpercentile(all_data[finite], [2, 98])
-        if vmin == vmax:
-            vmin -= 1e-6
-            vmax += 1e-6
-
-    orientations = ["lateral", "medial", "medial", "lateral"]
-    fig, axes = plt.subplots(
-        Xp.shape[1], len(orientations),
-        figsize=(20, 5 * Xp.shape[1]),
-        subplot_kw={"projection": "3d"}
-    )
-
-    for i in range(Xp.shape[1]):
-        left_i, right_i = left_right_layers[i]
-        row_title = titles[i] if (titles is not None and i < len(titles)) else f"Layer {i+1}"
-
-        for j, view in enumerate(orientations):
-            try:
-                ax = axes[i, j]
-            except Exception:
-                ax = axes[j]
-
-            if j in (0, 1):
-                plotting.plot_surf_stat_map(
-                    hcp.mesh.inflated_left,
-                    left_i,
-                    view=view,
-                    colorbar=False,
-                    bg_map=hcp.mesh.sulc_left,
-                    bg_on_data=True,
-                    darkness=0.3,
-                    axes=ax,
-                    figure=fig,
-                    cmap=cm,
-                    vmin=vmin,
-                    vmax=vmax,
-                    symmetric_cbar=False,
-                )
-            else:
-                plotting.plot_surf_stat_map(
-                    hcp.mesh.inflated_right,
-                    right_i,
-                    view=view,
-                    colorbar=False,
-                    bg_map=hcp.mesh.sulc_right,
-                    bg_on_data=True,
-                    darkness=0.3,
-                    axes=ax,
-                    figure=fig,
-                    cmap=cm,
-                    vmin=vmin,
-                    vmax=vmax,
-                    symmetric_cbar=False,
-                )
-            ax.set_title(f"{row_title} - {orientations[j].capitalize()}", fontsize=14)
-
-    cbar_ax = fig.add_axes([0.92, 0.2, 0.02, 0.6])
-    sm = plt.cm.ScalarMappable(cmap=plt.get_cmap(cm), norm=plt.Normalize(vmin=vmin, vmax=vmax))
-    sm.set_array([])
-    fig.colorbar(sm, cax=cbar_ax)
-
-    plt.suptitle(f"Surface plot", fontsize=16)
-    out_path = out_dir / folder_name / f"Surface_{eigValue}_twoHem.png"
-    print(out_path)
-    plt.savefig(out_path, facecolor="white", dpi=300)
-    plt.close()
-    return out_path
-
-
-def eigvecs_to_nifti(
-        eigvecs: np.ndarray,
-        out_dir,
-        name: str,
-        N: int,
-        num_layers: int,
-        atlas_path,
-        hcp_atlas: bool = True,
-        force_run: bool = True,
-        scaleEigVecs: bool = False,
-        saveNifti: bool = False,
-        add_name: str = "",
-):
-    """
-    Functional version of eigvecs_to_nifti (calls plot_on_mmhcp_surface_multipleLayers).
-    """
-    out_dir = Path(out_dir)
-    atlas_path = Path(atlas_path)
-
-    if scaleEigVecs:
-        M = np.max(np.abs(eigvecs), axis=0)
-        eigvecs_scaled = eigvecs / M
-        M_max = np.max(np.abs(eigvecs_scaled))
-        eigvecs = eigvecs_scaled * M_max
-
-    parcel_atlas_img = nib.load(str(atlas_path))
-    parcel_atlas = parcel_atlas_img.get_fdata()
-    unique_parcels = np.unique(parcel_atlas)
-
-    if hcp_atlas:
-        import warnings
-        warnings.warn("Selecting cortex parcels of the HCP-MMP1.0 atlas.")
-        unique_parcels = unique_parcels[
-            (unique_parcels >= 1001) & (unique_parcels <= 3000) & (unique_parcels != 2000)
-        ]
-    else:
-        unique_parcels = unique_parcels[(unique_parcels > 0)]
-
-    print(f"Unique parcels: {len(unique_parcels)}")
-
-    total_regions = eigvecs.shape[0]
-    num_components = eigvecs.shape[1]
-    threshold = 40
-
-    if num_components > threshold:
-        indices = list(range(20)) + list(range(num_components - 20, num_components))
-    else:
-        indices = list(range(num_components))
-
-    if total_regions % num_layers != 0:
-        raise ValueError("Total regions must be evenly divisible by number of layers.")
-
-    if N * num_layers != total_regions:
-        print(f"[warn] Provided N={N} and num_layers={num_layers} but N*L={N*num_layers} "
-              f"!= rows {total_regions}. Using inferred N={total_regions//num_layers}")
-        N = total_regions // num_layers
-
-    print(f"Mapping {total_regions} nodes into {num_layers} layers of {N} regions each.")
-
-    eig_layers = np.split(eigvecs, num_layers, axis=0)
-
-    for i in indices:
-        if force_run or not (out_dir / name / "eigenvector_layers").exists():
-            try:
-                (out_dir / name / f"eigenvector_layers{add_name}").mkdir(parents=True, exist_ok=True)
-                folder = out_dir / name / f"eigenvector_layers{add_name}"
-            except Exception:
-                folder = out_dir / name / "eigenvector_layers"
-                folder.mkdir(parents=True, exist_ok=True)
-
-            layer_imgs = []
-            for layer_idx, layer_data in enumerate(eig_layers):
-                map_3D = np.zeros_like(parcel_atlas)
-                for roi_idx, parcel in enumerate(unique_parcels):
-                    parcel_mask = np.zeros(parcel_atlas.shape)
-                    parcel_mask[parcel_atlas == parcel] = 1
-                    parcel_mask = np.array(parcel_mask, dtype=bool)
-                    final_mask = parcel_mask
-                    map_3D[final_mask] = layer_data[roi_idx, i]
-
-                layer_img = nib.Nifti1Image(map_3D, affine=parcel_atlas_img.affine)
-                if saveNifti:
-                    nib.save(layer_img,
-                             folder / f"eigenvector_{i+1}_layer_{layer_idx+1}.nii.gz")
-                layer_imgs.append(layer_img)
-
-        Xp_layers = []
-        for layer_idx in range(num_layers):
-            Xp_layers.append(eig_layers[layer_idx][:, i])
-        Xp_layers = np.array(Xp_layers)
-
-        if hcp_atlas:
-            plot_on_mmhcp_surface_multipleLayers(
-                Xp_layers.T, out_dir, name,
-                eigValue=i+1,
-                folder_name="eigenvector_layers"
-            )
-        else:
-            # fallback: just save volume NIfTIs (already done)
-            pass
-
-    print("All brain maps saved successfully!")
-
-
-# ---------- per-network 2D plots by network ----------
-
-def plot_two_dim_embedding_byNetwork(
-        eigvecs: np.ndarray,
-        out_dir,
-        name: str,
-        eigvecs_to_plot: Tuple[int, int] = (1, 2),
-        layer_labels: Optional[List[str]] = None,
-        network_labels: Optional[List[str]] = None,
-        network_cmap: str = "tab20",
-):
-    """
-    Functional version of plotTwoDimEmbedding_byNetwork.
-    """
-    out_dir = Path(out_dir)
-    out_dir = out_dir / name
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    x_dim, y_dim = eigvecs_to_plot
-    P3, _ = eigvecs.shape
-    P = P3 // 3
-
-    cats0 = np.loadtxt("cortex_parcel_network_assignments.txt", dtype=int)
-    networks0 = cats0 - 1
-    networks = np.tile(networks0, 3)
-    layers = np.repeat([0, 1, 2], P)
-
-    if layer_labels is None:
-        layer_labels = ["Superficial", "Middle", "Deep"]
-    if network_labels is None:
-        network_labels = [
-            "Visual1", "Visual2", "Somatomotor", "Cingulo-Opercular",
-            "Dorsal-Attentional", "Language", "Frontoparietal", "Auditory",
-            "Default", "Posterior-Multimodal", "Ventral-Multimodal", "Orbito-Affective"
-        ]
-
-    base_cmap = plt.get_cmap(network_cmap, len(network_labels))
-    network_colors = [base_cmap(i) for i in range(len(network_labels))]
-    coords2d = eigvecs[:, [x_dim, y_dim]]
-
-    from sklearn.metrics import silhouette_score
-
-    fig, axes = plt.subplots(3, 4, figsize=(16, 12), sharex=True, sharey=True)
-    axes = axes.flatten()
-    shapes = ["o", "s", "^"]
-    for net in range(len(network_labels)):
-        ax = axes[net]
-        mask_net = (networks == net)
-        net_coords = coords2d[mask_net]
-        net_layers = layers[mask_net]
-
-        if len(np.unique(net_layers)) > 1:
-            sil_score = silhouette_score(net_coords, net_layers)
-        else:
-            sil_score = np.nan
-
-        for lyr in [0, 1, 2]:
-            mask = mask_net & (layers == lyr)
-            if not mask.any():
-                continue
-            ax.scatter(
-                eigvecs[mask, x_dim],
-                eigvecs[mask, y_dim],
-                marker=shapes[lyr],
-                facecolor=network_colors[net],
-                edgecolor="k",
-                alpha=0.7,
-                label=layer_labels[lyr]
-            )
-        title = f"{network_labels[net]}\nSilhouette = {sil_score:.2f}"
-        ax.set_title(title, fontsize=10)
-        ax.set_xlabel(f"EV {x_dim+1}")
-        ax.set_ylabel(f"EV {y_dim+1}")
-        if net == 0:
-            ax.legend(title="Layer", loc="best")
-
-    for ax in axes[len(network_labels):]:
-        ax.axis("off")
-
-    plt.tight_layout()
-    eigstr = f"{x_dim}{y_dim}"
-    outpath = out_dir / f"Laplacian_embedding_byNetwork_{eigstr}.png"
-    plt.savefig(outpath, bbox_inches="tight")
-    plt.close()
-    print("Saved:", outpath)
-
-
-
 # ---------- plot violin or bar plots ----------
-
-
-def plot_rsn_distributions(
-    arrays: Sequence[np.ndarray],
-    out_dir: str | Path,
-    name: str = "RSN_distributions",
-    *,
-    atlas: str = "schaefer",
-    schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-    schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
-    network_labels: Optional[List[str]] = None,
-    array_labels: Optional[List[str]] = None,
-    kind: Literal["violin", "bar"] = "violin",
-    network_cmap: str = "tab20",
-    y_label: str = "Value",
-    fname: Optional[str] = None,
-    share_yaxis: bool = True,
-) -> str:
-    """
-    Plot distributions of parcel-wise values per Yeo-7 RSN for one or more arrays.
-    """
-    from matplotlib.lines import Line2D  # for legend handles
-
-    out_dir = Path(out_dir) / name
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    atlas_lower = atlas.lower()
-
-    # ----- RSN assignments -----
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-
-        nets0 = []
-        for k in uL:
-            nets0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            nets0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(nets0, int)
-        N = networks0.size
-
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Control", "Default"
-            ]
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        networks0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        N = networks0.size
-
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Frontoparietal", "Default",
-            ]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
-
-    # ----- check arrays -----
-    arrays = [np.asarray(a).reshape(-1) for a in arrays]
-    for idx, a in enumerate(arrays):
-        if a.size != N:
-            raise ValueError(
-                f"Array {idx} has length {a.size}, expected N={N} from atlas."
-            )
-
-    n_arrays = len(arrays)
-    if array_labels is None:
-        array_labels = [f"Index {i+1}" for i in range(n_arrays)]
-    elif len(array_labels) != n_arrays:
-        raise ValueError("array_labels must have same length as arrays.")
-
-    uniq_nets = np.array(sorted(np.unique(networks0)))
-    n_nets = len(uniq_nets)
-
-    # ----- RSN colours -----
-    if len(network_labels) == 7:
-        try:
-            seq_cmap = plt.get_cmap(network_cmap)
-        except Exception:
-            seq_cmap = plt.get_cmap("tab20")
-
-        shades = [seq_cmap(x_) for x_ in np.linspace(0.2, 0.9, 7)]
-        order_idx = [1, 0, 3, 2, 6, 5, 4]
-        net_colours_all = [None] * 7
-        for rank, net_idx in enumerate(order_idx):
-            net_colours_all[net_idx] = shades[rank]
-    else:
-        cmap = plt.get_cmap(network_cmap, len(network_labels))
-        net_colours_all = [cmap(i) for i in range(len(network_labels))]
-
-    present_colours = [net_colours_all[int(n)] for n in uniq_nets]
-    present_labels = [network_labels[int(n)] for n in uniq_nets]
-
-    # ----- plotting -----
-    mpl.rcParams["svg.fonttype"] = "none"
-    mpl.rcParams["text.usetex"] = False
-
-    fig, axes = plt.subplots(
-        1, n_arrays, figsize=(4.0 * n_arrays, 4.0), sharey=share_yaxis
-    )
-    if n_arrays == 1:
-        axes = [axes]
-
-    for idx, (arr, ax, title) in enumerate(zip(arrays, axes, array_labels)):
-        data_by_net = [arr[networks0 == net] for net in uniq_nets]
-
-        if kind == "violin":
-            v = ax.violinplot(
-                data_by_net,
-                positions=np.arange(n_nets) + 1,
-                showmeans=False,
-                showmedians=True,
-                showextrema=False,
-            )
-            for body, c in zip(v["bodies"], present_colours):
-                body.set_facecolor(c)
-                body.set_edgecolor("k")
-                body.set_alpha(0.8)
-            if "cmedians" in v:
-                v["cmedians"].set_color("k")
-                v["cmedians"].set_linewidth(1.2)
-
-        elif kind == "bar":
-            means = [np.nanmean(vals) for vals in data_by_net]
-            stds = [np.nanstd(vals) for vals in data_by_net]
-            xpos = np.arange(n_nets) + 1
-            ax.bar(
-                xpos,
-                means,
-                yerr=stds,
-                color=present_colours,
-                edgecolor="k",
-                linewidth=0.7,
-                alpha=0.9,
-                capsize=3,
-            )
-        else:
-            raise ValueError("kind must be 'violin' or 'bar'.")
-
-        ax.set_title(title)
-        ax.set_xticks(np.arange(n_nets) + 1)
-        ax.set_xticklabels(present_labels, rotation=45, ha="right", fontsize=8)
-        if share_yaxis:
-            if idx == 0:
-                ax.set_ylabel(y_label)
-        else:
-            ax.set_ylabel(y_label)
-
-    # RSN legend
-    handles = [
-        Line2D(
-            [0], [0], marker="s", linestyle="none",
-            markerfacecolor=c, markeredgecolor="k",
-            markersize=8, label=lab,
-        )
-        for c, lab in zip(present_colours, present_labels)
-    ]
-    axes[-1].legend(
-        handles=handles,
-        title="RSN",
-        bbox_to_anchor=(1.04, 1.0),
-        loc="upper left",
-        borderaxespad=0.0,
-    )
-
-    fig.tight_layout()
-
-    if fname is None:
-        fname = f"{name}_{kind}.svg"
-    outpath = out_dir / fname
-    fig.savefig(outpath, bbox_inches="tight", format="svg")
-    plt.close(fig)
-
-    print("Saved:", outpath)
-    return str(outpath)
-
-
-def _fdr_bh(pvals: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Benjamini-Hochberg FDR correction.
-    """
-    p = np.asarray(pvals, float).ravel()
-    m = p.size
-    if m == 0:
-        return p.copy(), np.zeros_like(p, dtype=bool)
-
-    order = np.argsort(p)
-    ranked_p = p[order]
-    ranks = np.arange(1, m + 1, dtype=float)
-
-    q = ranked_p * m / ranks
-    q = np.minimum.accumulate(q[::-1])[::-1]
-    q = np.clip(q, 0, 1)
-
-    p_fdr = np.empty_like(q)
-    p_fdr[order] = q
-
-    significant = p_fdr < alpha
-    return p_fdr, significant
-
-
 
 def plot_rsn_distributions_by_network(
     arrays: Sequence[np.ndarray],
@@ -1982,8 +1393,11 @@ def plot_rsn_distributions_by_network(
     name: str = "RSN_netwise",
     *,
     atlas: str = "schaefer",
-    schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.L.label.gii",
-    schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400.R.label.gii",
+    yeo_n: int = 7,
+    schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
+    schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
+    glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
+    glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
     network_labels: Optional[List[str]] = None,
     array_labels: Optional[List[str]] = None,
     kind: Literal["violin", "bar", "raincloud"] = "raincloud",
@@ -1991,55 +1405,26 @@ def plot_rsn_distributions_by_network(
     y_label: str = "Value",
     fname: Optional[str] = None,
     fdr_alpha: float = 0.05,
+    group_gap: float = 1.0,
 ) -> Tuple[str, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    RSN-wise distributions (one subplot per Yeo-7 network) for several arrays,
-    plus one-way ANOVA per RSN and BH-FDR across RSNs.
+    RSN-wise distributions in a SINGLE plot: networks along the x-axis, with
+    one cluster of `n_arrays` (e.g. layers) per network and a gap after each
+    triplet. Legend distinguishes the arrays (layers). One-way ANOVA per RSN
+    (across arrays) and BH-FDR across RSNs.
     """
     out_dir = Path(out_dir) / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    atlas_lower = atlas.lower()
+    networks0, default_labels = _get_yeo_assignments(
+        atlas=atlas, yeo_n=yeo_n,
+        schaefer_label_L=schaefer_label_L, schaefer_label_R=schaefer_label_R,
+        glasser_yeo7_path=glasser_yeo7_path, glasser_yeo17_path=glasser_yeo17_path,
+    )
+    N = networks0.size
+    if network_labels is None:
+        network_labels = default_labels
 
-    # ----- RSN assignments & labels -----
-    if atlas_lower == "schaefer":
-        if schaefer_label_L is None or schaefer_label_R is None:
-            raise ValueError("For atlas='schaefer', provide Schaefer label.gii paths.")
-
-        L_lab, L_map = _load_label_gii(schaefer_label_L)
-        R_lab, R_map = _load_label_gii(schaefer_label_R)
-        uL = np.array(sorted(np.unique(L_lab[L_lab > 0])))
-        uR = np.array(sorted(np.unique(R_lab[R_lab > 0])))
-
-        nets0 = []
-        for k in uL:
-            nets0.append(_schaefer7_from_name(L_map[k]))
-        for k in uR:
-            nets0.append(_schaefer7_from_name(R_map[k]))
-        networks0 = np.asarray(nets0, int)
-        N = networks0.size
-
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Control", "Default",
-            ]
-    elif atlas_lower in ("hcp", "glasser", "glasser360", "mmp"):
-        nets0 = _load_glasser_yeo7_assignments(
-            "cortex_parcel_network_assignments_Yeo7.txt"
-        )
-        networks0 = nets0
-        N = networks0.size
-
-        if network_labels is None:
-            network_labels = [
-                "Visual", "Somatomotor", "Dorsal Attn",
-                "Ventral/Salience", "Limbic", "Frontoparietal", "Default",
-            ]
-    else:
-        raise ValueError(f"Unknown atlas '{atlas}'. Use 'schaefer' or 'glasser'/'hcp'/'mmp'.")
-
-    # ----- arrays & labels -----
     arrays = [np.asarray(a).reshape(-1) for a in arrays]
     for i, a in enumerate(arrays):
         if a.size != N:
@@ -2056,11 +1441,9 @@ def plot_rsn_distributions_by_network(
     uniq_nets = np.array(sorted(np.unique(networks0)))
     n_nets = len(uniq_nets)
 
-    # ----- colours for arrays -----
     cmap = plt.get_cmap(array_cmap, n_arrays)
     array_colors = [cmap(i) for i in range(n_arrays)]
 
-    # ----- global y-limits -----
     all_vals = np.concatenate([a[np.isfinite(a)] for a in arrays])
     if all_vals.size == 0:
         raise ValueError("All values are NaN; cannot set y-axis.")
@@ -2071,31 +1454,33 @@ def plot_rsn_distributions_by_network(
         pad = 0.5 if y_min == 0 else 0.05 * abs(y_min)
         y_min -= pad
         y_max += pad
+    # headroom for the per-network stats text
+    y_range = y_max - y_min
+    y_text = y_max + 0.04 * y_range
+    y_top = y_max + 0.14 * y_range
 
     mpl.rcParams["svg.fonttype"] = "none"
     mpl.rcParams["text.usetex"] = False
 
-    # grid
-    n_cols = min(4, n_nets)
-    n_rows = int(np.ceil(n_nets / n_cols))
+    # ---- single-axis layout -------------------------------------------------
+    step = n_arrays + group_gap
 
-    fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(3.0 * n_cols, 3.0 * n_rows),
-        squeeze=False,
-    )
+    fig, ax = plt.subplots(figsize=(max(8.0, 1.6 * n_nets), 4.5))
 
     F_vals = np.full(n_nets, np.nan, float)
     p_raw = np.full(n_nets, np.nan, float)
 
-    xpos = np.arange(n_arrays) + 1
-    x_min, x_max = 0.5, n_arrays + 0.5
+    group_centers = np.zeros(n_nets, float)
 
-    # ----- per-network loop -----
+    max_width = 0.4
+    jitter = 0.08
+    alpha_kde = 0.6
+    alpha_pts = 0.7
+
     for idx_net, net in enumerate(uniq_nets):
-        r = idx_net // n_cols
-        c = idx_net % n_cols
-        ax = axes[r, c]
+        base = idx_net * step
+        xpos = base + np.arange(n_arrays)
+        group_centers[idx_net] = xpos.mean()
 
         groups = []
         for arr in arrays:
@@ -2103,7 +1488,6 @@ def plot_rsn_distributions_by_network(
             vals = vals[np.isfinite(vals)]
             groups.append(vals)
 
-        # ANOVA
         try:
             F, p = f_oneway(*groups)
         except Exception:
@@ -2111,11 +1495,11 @@ def plot_rsn_distributions_by_network(
         F_vals[idx_net] = F
         p_raw[idx_net] = p
 
-        # plotting
         if kind == "violin":
             v = ax.violinplot(
                 groups,
                 positions=xpos,
+                widths=0.8,
                 showmeans=False,
                 showmedians=True,
                 showextrema=False,
@@ -2134,6 +1518,7 @@ def plot_rsn_distributions_by_network(
             ax.bar(
                 xpos,
                 means,
+                width=0.8,
                 yerr=stds,
                 color=array_colors,
                 edgecolor="k",
@@ -2143,12 +1528,8 @@ def plot_rsn_distributions_by_network(
             )
 
         elif kind == "raincloud":
-            max_width = 0.4
-            jitter = 0.08
-            alpha_kde = 0.6
-            alpha_pts = 0.7
-
-            for j, (g_vals, color) in enumerate(zip(groups, array_colors), start=1):
+            for j, (g_vals, color) in enumerate(zip(groups, array_colors)):
+                xc = base + j  # this array's slot within the network cluster
                 if g_vals.size == 0:
                     continue
 
@@ -2163,8 +1544,8 @@ def plot_rsn_distributions_by_network(
                         density = kde(y_grid)
                         if np.max(density) > 0:
                             density = density / np.max(density) * max_width
-                            x_left = j - density
-                            x_right = np.full_like(y_grid, j)
+                            x_left = xc - density
+                            x_right = np.full_like(y_grid, xc)
                             x_poly = np.concatenate([x_left, x_right[::-1]])
                             y_poly = np.concatenate([y_grid, y_grid[::-1]])
                             ax.fill(
@@ -2178,7 +1559,7 @@ def plot_rsn_distributions_by_network(
                     except Exception:
                         pass
 
-                x_jitter = j + (np.random.rand(g_vals.size) - 0.5) * 2 * jitter
+                x_jitter = xc + (np.random.rand(g_vals.size) - 0.5) * 2 * jitter
                 ax.scatter(
                     x_jitter,
                     g_vals,
@@ -2191,7 +1572,7 @@ def plot_rsn_distributions_by_network(
 
                 med = np.nanmedian(g_vals)
                 ax.scatter(
-                    j + max_width * 0.6,
+                    xc + max_width * 0.6,
                     med,
                     color="k",
                     marker="_",
@@ -2202,48 +1583,37 @@ def plot_rsn_distributions_by_network(
         else:
             raise ValueError("kind must be 'violin', 'bar', or 'raincloud'.")
 
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_xticks(xpos)
-        ax.set_xticklabels(array_labels, rotation=45, ha="right", fontsize=7)
-
-        if c == 0:
-            ax.set_ylabel(y_label)
-
-        net_label = network_labels[int(net)]
-        ax.set_title(net_label, fontsize=9)
-
-    # hide unused subplots
-    for idx in range(n_nets, n_rows * n_cols):
-        r = idx // n_cols
-        c = idx % n_cols
-        axes[r, c].axis("off")
-
-    # ----- FDR -----
+    # ---- FDR across networks ------------------------------------------------
     p_fdr, sig_mask = _fdr_bh(p_raw, alpha=fdr_alpha)
 
+    # ---- per-network stats annotation above each cluster --------------------
     for idx_net, net in enumerate(uniq_nets):
-        r = idx_net // n_cols
-        c = idx_net % n_cols
-        ax = axes[r, c]
-
         F = F_vals[idx_net]
         p = p_raw[idx_net]
         q = p_fdr[idx_net]
         star = " *" if sig_mask[idx_net] else ""
-        txt = f"F={F:.2f}, p={p:.2g}\nq={q:.2g}{star}"
+        txt = f"F={F:.2f}\np={p:.2g}\nq={q:.2g}{star}"
         ax.text(
-            0.05,
-            0.95,
+            group_centers[idx_net],
+            y_text,
             txt,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=7,
+            ha="center",
+            va="bottom",
+            fontsize=6.5,
             bbox=dict(boxstyle="round,pad=0.2", fc="w", ec="k", lw=0.4),
         )
 
-    # legend for arrays
+    # ---- axes cosmetics -----------------------------------------------------
+    ax.set_xlim(-0.5, (n_nets - 1) * step + (n_arrays - 1) + 0.5)
+    ax.set_ylim(y_min, y_top)
+    ax.set_xticks(group_centers)
+    ax.set_xticklabels(
+        [network_labels[int(net)] for net in uniq_nets],
+        rotation=30, ha="right", fontsize=8,
+    )
+    ax.set_ylabel(y_label)
+
+    # legend distinguishes the arrays (layers)
     handles = [
         Line2D(
             [0], [0],
@@ -2255,11 +1625,11 @@ def plot_rsn_distributions_by_network(
         )
         for i in range(n_arrays)
     ]
-    fig.legend(
+    ax.legend(
         handles=handles,
-        title="Index",
+        title="Layer",
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.5, 1.12),
         ncol=min(n_arrays, 4),
         fontsize=8,
     )
@@ -2267,7 +1637,7 @@ def plot_rsn_distributions_by_network(
     fig.tight_layout(rect=(0, 0, 1, 0.95))
 
     if fname is None:
-        fname = f"{name}_{kind}_byNetwork.svg"
+        fname = f"{name}_yeo{yeo_n}_{kind}_single.svg"
     outpath = out_dir / fname
     fig.savefig(outpath, bbox_inches="tight", format="svg")
     plt.close(fig)

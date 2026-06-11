@@ -322,62 +322,9 @@ def run_gradient_analysis(
     return gm.gradients_, gm.lambdas_
 
 
-def run_gradient_analysis_affinity(
-    conn_matrix: np.ndarray,
-    n_components: int = 10,
-    kernel: str = "cosine",
-    approach: str = "dm",
-    random_state: int = 0,
-    sparsity: float | None = 0.9,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Compute an affinity matrix first, then run GradientMaps on the affinity.
-
-    Parameters
-    ----------
-    conn_matrix : np.ndarray
-        (N × N) connectivity / similarity matrix.
-    n_components : int
-        Number of gradient components.
-    kernel : str
-        Kernel used in affinity construction.
-    approach : str
-        Embedding algorithm in BrainSpace.
-    random_state : int
-        RNG seed.
-    sparsity : float or None
-        Proportion of strongest affinities to retain.
-
-    Returns
-    -------
-    gradients : np.ndarray
-        (N × n_components) gradient coordinates.
-    affinity : np.ndarray
-        (N × N) affinity matrix used for embedding.
-    """
-    from brainspace.gradient.kernels import compute_affinity
-
-    A = compute_affinity(
-        conn_matrix,
-        kernel=kernel,
-        sparsity=sparsity,
-        non_negative=True,
-    )
-
-    gm = GradientMaps(
-        n_components=n_components,
-        approach=approach,
-        kernel=None,
-        random_state=random_state,
-    )
-    gm.fit(A)
-    return gm.gradients_, A
-
-
 # ---------------------------------------------------------------------
 # Inter-areal & intra-areal laminar dissimilarity
 # ---------------------------------------------------------------------
-
 
 def inter_areal_dissimilarity(
     G_all: np.ndarray,
@@ -407,12 +354,12 @@ def inter_areal_dissimilarity(
     Returns
     -------
     distanceSum : (N,) np.ndarray
-        Overall mean distance across concatenated laminar profiles.
+        Overall mean cosine distance across concatenated laminar profiles.
     distanceSum_deep : (N,) np.ndarray
     distanceSum_mid : (N,) np.ndarray
     distanceSum_sup : (N,) np.ndarray
-        Layer-specific mean distances from equidistant indices interpreted
-        as (deep, mid, superficial).
+        Layer-specific mean cosine distances from equidistant indices
+        interpreted as (deep, mid, superficial).
     """
     os.makedirs(outputDir, exist_ok=True)
 
@@ -440,6 +387,7 @@ def inter_areal_dissimilarity(
     plt.figure(figsize=(6, 6))
     plt.imshow(P, cmap="PRGn")
     plt.title("ConcatMatrix P - inter areal dis")
+    plt.colorbar(label="InterMatrix")
     plt.savefig(
         os.path.join(outputDir, "ConcatMatrixP_inter.svg"),
         bbox_inches="tight",
@@ -447,9 +395,13 @@ def inter_areal_dissimilarity(
     )
     plt.close()
 
-    # Cosine distance across concatenated profiles
-    S = P @ P.T  # similarity
-    D = 1.0 - S  # distance
+    # Cosine distance across concatenated profiles.
+    # Each layer block is unit-norm, so a concatenated profile has norm sqrt(L);
+    # dividing the dot product by L recovers the cosine similarity of the full
+    # laminar profile, giving a distance bounded in [0, 2].
+
+    S = (P @ P.T) / L  # cosine similarity
+    D = 1.0 - S        # cosine distance
     np.fill_diagonal(D, 0.0)
 
     # Mean distance per parcel (excluding self)
@@ -472,6 +424,7 @@ def inter_areal_dissimilarity(
     plt.figure(figsize=(6, 6))
     plt.imshow(D, cmap="viridis")
     plt.title("Distance matrix - inter areal dis")
+    plt.colorbar(label="Distance")
     plt.savefig(
         os.path.join(outputDir, "Matrix_interArealDis.svg"),
         bbox_inches="tight",
@@ -479,18 +432,40 @@ def inter_areal_dissimilarity(
     )
     plt.close()
 
-    plt.figure(figsize=(10, 10))
-    plt.imshow(distanceSum[:, np.newaxis], cmap="viridis")
-    plt.title("Distance sum - inter areal dis")
+    plt.figure(figsize=(6, 6))
+    plt.imshow(D_layers[i_deep], cmap="viridis")
+    plt.title("Inter areal distance matrix - deep")
+    plt.colorbar(label="Distance")
     plt.savefig(
-        os.path.join(outputDir, "Matrix_interArealDisSum.svg"),
+        os.path.join(outputDir, "Matrix_interArealDeep.svg"),
+        bbox_inches="tight",
+        format="svg",
+    )
+    plt.close()
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(D_layers[i_mid], cmap="viridis")
+    plt.title("Inter areal distance matrix - middle")
+    plt.colorbar(label="Distance")
+    plt.savefig(
+        os.path.join(outputDir, "Matrix_interArealMid.svg"),
+        bbox_inches="tight",
+        format="svg",
+    )
+    plt.close()
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(D_layers[i_sup], cmap="viridis")
+    plt.title("Inter areal distance matrix - superficial")
+    plt.colorbar(label="Distance")
+    plt.savefig(
+        os.path.join(outputDir, "Matrix_interArealSup.svg"),
         bbox_inches="tight",
         format="svg",
     )
     plt.close()
 
     return distanceSum, distanceSum_deep, distanceSum_mid, distanceSum_sup, D
-
 
 def intra_areal_dissimilarity(
     G_all: np.ndarray,
@@ -637,501 +612,9 @@ def intra_areal_dissimilarity(
         raise ValueError("mode must be 'to_mean' or 'pairwise'")
 
 
-
-def laminar_cosine_similarity_matrices(
-    G_all: np.ndarray,
-    N: int = 400,
-    zscore_within_layer: bool = True,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Cosine similarity matrices for deep, middle, superficial and their mean.
-
-    This function:
-      1. Splits a (L*N × k) embedding matrix into L layers of (N × k),
-      2. Optionally z-scores embeddings within each layer across parcels,
-      3. L2-normalises rows in each layer to unit length,
-      4. Selects three approximately equidistant layers interpreted as
-         deep/mid/superficial,
-      5. Computes cosine similarity matrices for each selected layer,
-      6. Computes their mean similarity matrix.
-
-    Parameters
-    ----------
-    G_all : np.ndarray
-        (L*N × k) matrix of gradients/embeddings, stacked by layer:
-        [layer1; layer2; ...; layerL].
-    N : int, optional
-        Number of parcels per layer.
-    zscore_within_layer : bool, optional
-        If True, z-score embeddings within each layer (across parcels)
-        before L2 normalisation.
-
-    Returns
-    -------
-    S_mean : np.ndarray
-        (N × N) mean cosine similarity across the selected deep/mid/sup
-        layers: S_mean = (S_deep + S_mid + S_sup) / 3.
-    S_deep : np.ndarray
-        (N × N) cosine similarity matrix for the "deep" layer.
-    S_mid : np.ndarray
-        (N × N) cosine similarity matrix for the "middle" layer.
-    S_sup : np.ndarray
-        (N × N) cosine similarity matrix for the "superficial" layer.
-    """
-    layers = _split_layers(G_all, N=N)  # list of (N × k)
-    L = len(layers)
-    if L < 3:
-        raise ValueError(f"Need at least 3 layers to define deep/mid/sup; got L={L}")
-
-    # Optional z-scoring within each layer across parcels
-    if zscore_within_layer:
-        layers = [
-            (X - X.mean(axis=0, keepdims=True)) /
-            (X.std(axis=0, keepdims=True) + 1e-12)
-            for X in layers
-        ]
-
-    # Normalised layer embeddings
-    U_layers = [_l2_normalize_rows(X) for X in layers]
-
-    # Indices for deep / mid / sup (same convention as other laminar funcs)
-    i_deep, i_mid, i_sup = _equidistant_layer_indices(L)
-
-    U_deep = U_layers[i_deep]
-    U_mid  = U_layers[i_mid]
-    U_sup  = U_layers[i_sup]
-
-    # Cosine similarity matrices
-    S_deep = U_deep @ U_deep.T   # (N × N)
-    S_mid  = U_mid  @ U_mid.T
-    S_sup  = U_sup  @ U_sup.T
-
-    # Mean similarity across the three selected layers
-    S_mean = (S_deep + S_mid + S_sup) / 3.0
-
-    return S_mean, S_deep, S_mid, S_sup
-
-
-def csp_like_layer_vs_mean(
-    C_mean: np.ndarray,
-    C_layer: np.ndarray,
-    n_components: int | None = None,
-    reg: float = 1e-6,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    CSP-like decomposition: spatial filters maximising layer vs mean contrast.
-
-    Finds spatial filters w that maximise the Rayleigh quotient:
-
-        max_w  (w^T C_layer w) / (w^T C_mean w)
-
-    using a pseudoinverse-based approximation:
-      1. Regularise C_mean: C_mean_reg = C_mean + reg I
-      2. Compute P = pinv(C_mean_reg) @ C_layer
-      3. Symmetrise P and eigendecompose.
-
-    Parameters
-    ----------
-    C_mean : np.ndarray
-        (N × N) mean connectivity / similarity matrix (e.g. cosine similarity
-        averaged across layers). Should be symmetric.
-    C_layer : np.ndarray
-        (N × N) layer-specific connectivity / similarity matrix (e.g.,
-        from deep, mid or superficial layer residuals). Must match
-        the shape of C_mean.
-    n_components : int or None
-        Number of spatial filters to return. If None, return all N.
-    reg : float
-        Diagonal regularisation added to C_mean before pseudoinverse.
-
-    Returns
-    -------
-    W : np.ndarray
-        (N × n_components) spatial filters. Columns w are spatial patterns
-        (over parcels) approximating the maximisers of the CSP-like ratio.
-        Sorted by decreasing eigenvalue.
-    lambdas : np.ndarray
-        (n_components,) approximate generalised eigenvalues.
-    """
-    if C_mean.shape != C_layer.shape:
-        raise ValueError("C_mean and C_layer must have the same shape.")
-    if C_mean.shape[0] != C_mean.shape[1]:
-        raise ValueError("Connectivity matrices must be square.")
-
-    N = C_mean.shape[0]
-
-    # 1) Regularise C_mean slightly for stability
-    C_mean_reg = C_mean + reg * np.eye(N)
-
-    # 2) Pseudoinverse of C_mean_reg
-    C_mean_pinv = np.linalg.pinv(C_mean_reg)  # (N × N)
-
-    # 3) Form the "effective" operator and symmetrise
-    #    In exact arithmetic, C_mean^{-1} C_layer is similar to the symmetric
-    #    whitened operator, but numerically it won't be perfectly symmetric.
-    P = C_mean_pinv @ C_layer              # (N × N)
-    P = 0.5 * (P + P.T)                    # enforce symmetry
-
-    # 4) Eigen-decomposition of symmetric P
-    eigvals, eigvecs = np.linalg.eigh(P)   # eigvecs columns: spatial filters
-
-    # 5) Sort by decreasing eigenvalue (largest contrast first)
-    idx = np.argsort(eigvals)[::-1]
-    eigvals = eigvals[idx]
-    eigvecs = eigvecs[:, idx]
-
-    # 6) Truncate if requested
-    if n_components is not None and n_components < eigvecs.shape[1]:
-        W = eigvecs[:, :n_components]
-        lambdas = eigvals[:n_components]
-    else:
-        W = eigvecs
-        lambdas = eigvals
-
-    return W, lambdas
-
-# ---------------------------------------------------------------------
-# Eigenvector clustering & utilities
-# ---------------------------------------------------------------------
-
-
-def sign_invariant_distance(u: np.ndarray, v: np.ndarray) -> float:
-    """
-    Sign-invariant cosine distance between two vectors: 1 - |cos(theta)|.
-    """
-    return 1.0 - float(np.abs(np.dot(u, v)))
-
-
-def runClusterAnalysis(
-    eigvecs_list: Sequence[np.ndarray],
-    threshold: float = 0.3,
-) -> Tuple[Dict[int, List[int]], np.ndarray]:
-    """
-    Hierarchical clustering of eigenvectors with sign-invariant distances.
-
-    Parameters
-    ----------
-    eigvecs_list : sequence of 1D arrays
-        Each element is an eigenvector (length N).
-    threshold : float
-        Distance threshold for AgglomerativeClustering (precomputed metric).
-
-    Returns
-    -------
-    cluster_groups : dict
-        {cluster_id -> list of indices in eigvecs_list}.
-    labels : np.ndarray
-        Cluster label per eigenvector.
-    """
-    eigvecs_array = np.array(
-        [v / np.linalg.norm(v) for v in eigvecs_list]
-    )
-    D = squareform(pdist(eigvecs_array, metric=sign_invariant_distance))
-
-    clustering = AgglomerativeClustering(
-        metric="precomputed",
-        linkage="average",
-        distance_threshold=threshold,
-        n_clusters=None,
-    )
-    labels = clustering.fit_predict(D)
-
-    cluster_groups: Dict[int, List[int]] = defaultdict(list)
-    for i, cid in enumerate(labels):
-        cluster_groups[cid].append(i)
-
-    return cluster_groups, labels
-
-
-def convert_eigvals_to_list(
-    eigvecs: np.ndarray,
-    eigvals: np.ndarray,
-    N: int,
-    num_layers: int,
-) -> Tuple[List[np.ndarray], List[float], List[Tuple[int, int, int]]]:
-    """
-    Convert a (num_layers*N × M) eigenvector matrix into a flat list of
-    per-layer eigenvectors plus metadata.
-
-    Parameters
-    ----------
-    eigvecs : np.ndarray
-        (num_layers*N × M) eigenvectors, stacked by layer.
-    eigvals : np.ndarray
-        (M,) eigenvalues.
-    N : int
-        Parcels per layer.
-    num_layers : int
-        Number of layers.
-
-    Returns
-    -------
-    eigvecs_list : list of (N,) arrays
-        Normalised eigenvectors per layer.
-    eigvalue_list : list of float
-        Corresponding eigenvalues.
-    source_info : list of (row_idx, col_idx, eig_index)
-        Simple metadata for each eigenvector (kept for backwards compatibility).
-    """
-    if eigvecs.shape[0] != num_layers * N:
-        raise ValueError(
-            f"Expected eigvecs shape (num_layers*N, M) with N={N}, num_layers={num_layers}; "
-            f"got {eigvecs.shape}"
-        )
-
-    eigvecs_list: List[np.ndarray] = []
-    eigvalue_list: List[float] = []
-    source_info: List[Tuple[int, int, int]] = []
-
-    for layer_idx in range(num_layers):
-        row_start = layer_idx * N
-        row_end = row_start + N
-        layer_eigvecs = eigvecs[row_start:row_end, :]  # (N × M)
-
-        row_idx = layer_idx + 1
-        col_idx = layer_idx + 1
-
-        for i in range(layer_eigvecs.shape[1]):
-            eigvec = layer_eigvecs[:, i]
-            eigvecs_list.append(eigvec / np.linalg.norm(eigvec))
-            source_info.append((row_idx, col_idx, i))
-            eigvalue_list.append(float(eigvals[i]))
-
-    return eigvecs_list, eigvalue_list, source_info
-
-
-def plotEigvectors_similar_distinct(
-    eigvecs_list: Sequence[np.ndarray],
-    eigvalue_list: Sequence[float],
-    source_info: Sequence[Tuple[int, int, int]],
-    cluster_groups: Dict[int, List[int]],
-    name: str,
-    data_dir: str,
-    eigenvalue_threshold: float,
-    cluster_threshold: float,
-) -> None:
-    """
-    Plot groups of similar eigenvectors (clusters) and distinct singletons
-    on the cortical surface via the existing surface mapping function.
-
-    This function assumes you are using the same parcel ordering that
-    `plot_on_mmhcp_surface_multipleLayers` expects.
-
-    Parameters
-    ----------
-    eigvecs_list : sequence of (N,) arrays
-        Normalised eigenvectors.
-    eigvalue_list : sequence of float
-        Eigenvalues associated with each eigenvector.
-    source_info : sequence of (row_idx, col_idx, eig_index)
-        Metadata produced by `convert_eigvals_to_list`.
-    cluster_groups : dict
-        Output of `runClusterAnalysis`.
-    name : str
-        Subdirectory under `data_dir` for outputs.
-    data_dir : str
-        Root data directory (same as LaminarConfig.data_dir).
-    eigenvalue_threshold : float
-        Maximum eigenvalue to consider for “distinct” singletons.
-    cluster_threshold : float
-        If similarity ≥ (1 - cluster_threshold) within the same (row,col),
-        we treat eigenvectors as non-distinct.
-    """
-    # Lazy import to avoid circular dependency
-    from .plots_embedding import plot_on_mmhcp_surface_multipleLayers
-
-    out_folder = os.path.join(data_dir, name, "SimilarDissimilar")
-    os.makedirs(out_folder, exist_ok=True)
-
-    # 1) Multi-member clusters → “similar” patterns
-    for cluster_id, indices in cluster_groups.items():
-        if len(indices) == 1:
-            continue
-        eigvecs_to_plot = [eigvecs_list[i] for i in indices]
-        meta = [source_info[i] for i in indices]
-        titles = [f"(r{r},c{c}) eig{e}" for (r, c, e) in meta]
-        Xp = np.stack(eigvecs_to_plot, axis=1)  # (N × k)
-
-        name_str = "-".join([f"r{r}_c{c}_e{e}" for (r, c, e) in meta])
-        eig_label = name_str
-
-        plot_on_mmhcp_surface_multipleLayers(
-            Xp,
-            eigValue=eig_label,
-            name=name,
-            folder_name="SimilarDissimilar",
-        )
-
-    # 2) Singleton clusters → check whether they are truly distinct
-    eigvalue_list = list(eigvalue_list)
-    source_info = list(source_info)
-
-    for cluster_id, indices in cluster_groups.items():
-        if len(indices) > 1:
-            continue  # only singletons
-
-        i = indices[0]
-        eigval_i = eigvalue_list[i]
-        if not (0 < eigval_i < eigenvalue_threshold):
-            continue
-
-        r, c, eig_idx = source_info[i]
-        v_i = eigvecs_list[i] / np.linalg.norm(eigvecs_list[i])
-
-        # Compare against others from the same (row, col)
-        similar_found = False
-        for j, (rj, cj, _) in enumerate(source_info):
-            if (rj, cj) != (r, c) or j == i:
-                continue
-
-            eigval_j = eigvalue_list[j]
-            if not (0 < eigval_j < eigenvalue_threshold):
-                continue
-
-            v_j = eigvecs_list[j] / np.linalg.norm(eigvecs_list[j])
-            similarity = float(np.abs(np.dot(v_i, v_j)))
-            if similarity >= (1.0 - cluster_threshold):
-                similar_found = True
-                break
-
-        if similar_found:
-            continue
-
-        # Truly distinct singleton → plot
-        eigvecs_to_plot = [eigvecs_list[i]]
-        meta = [source_info[i]]
-        titles = [f"Distinct_(r{r},c{c}) eig{e}" for (r, c, e) in meta]
-        Xp = np.stack(eigvecs_to_plot, axis=1)
-
-        name_str = f"r{r}_c{c}_e{eig_idx}"
-        eig_label = name_str
-
-        plot_on_mmhcp_surface_multipleLayers(
-            Xp,
-            eigValue=eig_label,
-            name=name,
-            folder_name="SimilarDissimilar",
-        )
-
-
-# ---------------------------------------------------------------------
-# Cosine similarity utilities and plots
-# ---------------------------------------------------------------------
-
-
-def plot_cosine_similarity(
-    cosineSim: np.ndarray,
-    data_dir: str,
-    name: str,
-    thresholds: Sequence[float],
-    extraName: str = "CosineSimilarityAcrossThresholds",
-    labels: Sequence[str] | None = None,
-    ylabel: str = "Cosine Similarity",
-) -> None:
-    """
-    Plot mean cosine similarity across thresholds with SEM shading.
-
-    Parameters
-    ----------
-    cosineSim : np.ndarray
-        Array of shape (nComparisons, nSubjects, nThresh) containing cosine
-        similarity values.
-    data_dir : str
-        Root data directory for outputs.
-    name : str
-        Subdirectory under `data_dir` in which to save the figure.
-    thresholds : sequence
-        Threshold values (e.g., np.arange(70, 100)).
-    extraName : str
-        Extra suffix for the output filename.
-    labels : list of str or None
-        Labels for each comparison line. If None, generic labels are used.
-    ylabel : str
-        Y-axis label.
-    """
-    nComparisons, nSubjects, nThresh = cosineSim.shape
-    thresholds = list(thresholds)
-
-    if len(thresholds) != nThresh:
-        raise ValueError(
-            f"Expected thresholds of length {nThresh}, got {len(thresholds)}."
-        )
-
-    if labels is None:
-        labels = [f"Comparison {i+1}" for i in range(nComparisons)]
-        # If you want specific default labels, uncomment:
-        # labels = ["Deep vs. Middle", "Deep vs. Superficial", "Superficial vs. Middle"]
-
-    out_dir = os.path.join(data_dir, name)
-    os.makedirs(out_dir, exist_ok=True)
-
-    mean_sim = cosineSim.mean(axis=1)
-    sem_sim = cosineSim.std(axis=1, ddof=1) / np.sqrt(nSubjects)
-
-    plt.figure(figsize=(10, 6))
-    for i in range(nComparisons):
-        plt.plot(thresholds, mean_sim[i], label=labels[i])
-        plt.fill_between(
-            thresholds,
-            mean_sim[i] - sem_sim[i],
-            mean_sim[i] + sem_sim[i],
-            alpha=0.2,
-        )
-
-    plt.xlabel("Threshold (%)")
-    plt.ylabel(ylabel)
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    outpath = os.path.join(out_dir, f"{extraName}.png")
-    plt.savefig(outpath, bbox_inches="tight")
-    plt.close()
-
-
-def cosine_similarity_upper(mat1: np.ndarray, mat2: np.ndarray) -> float:
-    """
-    Cosine similarity between the upper-triangular elements (k>0) of two
-    square matrices.
-
-    Parameters
-    ----------
-    mat1, mat2 : np.ndarray
-        Square matrices of identical shape.
-
-    Returns
-    -------
-    similarity : float
-        Cosine similarity in [-1, 1]. Returns 0.0 if norms are zero.
-    """
-    if mat1.shape != mat2.shape:
-        raise ValueError(
-            f"Matrix shapes must match, got {mat1.shape} and {mat2.shape}"
-        )
-    if mat1.ndim != 2 or mat1.shape[0] != mat1.shape[1]:
-        raise ValueError(f"Matrices must be square, but got shape {mat1.shape}")
-
-    iu = np.triu_indices(mat1.shape[0], k=1)
-    v1 = mat1[iu]
-    v2 = mat2[iu]
-
-    dot = float(np.dot(v1, v2))
-    norm_prod = float(np.linalg.norm(v1) * np.linalg.norm(v2))
-    if norm_prod == 0.0:
-        return 0.0
-    return dot / norm_prod
-
-
 __all__ = [
+    "run_gradient_analysis_auto",
     "run_gradient_analysis",
-    "run_gradient_analysis_affinity",
     "inter_areal_dissimilarity",
     "intra_areal_dissimilarity",
-    "laminar_cosine_similarity_matrices",
-    "csp_like_layer_vs_mean",
-    "sign_invariant_distance",
-    "runClusterAnalysis",
-    "convert_eigvals_to_list",
-    "plotEigvectors_similar_distinct",
-    "plot_cosine_similarity",
-    "cosine_similarity_upper",
 ]

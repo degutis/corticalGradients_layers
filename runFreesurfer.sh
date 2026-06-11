@@ -1,6 +1,6 @@
 export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer
 
-subject=sub-LAM021
+subject=sub-LAM026
 anat_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/${subject}/anat
 
 recon-all -s ${subject} \

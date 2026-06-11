@@ -191,7 +191,7 @@ def run_pairwise_distance_correlation(
 if __name__ == "__main__":
 
     run_pairwise_distance_correlation(
-        csv_A="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/WithinLayer_gradients_kernelCOS_API/dissimilarityGradient/Scatter/Scatter2D_NetCentroids/Scatter_InterIntra_centroid_centroids.csv",
-        csv_B="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/WithinLayer_gradients_kernelCOS_API/dissimilarityGradient/Scatter/Scatter2D_NetCentroids/Scatter_InterIntra_centroid_centroids.csv",
-        out_dir="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/WithinLayer_gradients_kernelCOS_API/robustness_centroids"
+        csv_A="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/WithinLayer_gradients_kernelCOS_API_interSpecific/dissimilarityGradient/Scatter/Scatter2D_NetCentroids/Scatter_SupDeep_centroid_centroids.csv",
+        csv_B="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Glasser/WithinLayer_gradients_kernelCOS_API_interSpecific/dissimilarityGradient/Scatter/Scatter2D_NetCentroids/Scatter_SupDeep_centroid_centroids.csv",
+        out_dir="/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations/smallGap_Schaefer/WithinLayer_gradients_kernelCOS_API_interSpecific/robustness_centroids"
     )

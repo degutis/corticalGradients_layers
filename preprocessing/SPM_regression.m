@@ -7,7 +7,7 @@ spm_jobman('initcfg');   % Initialize job manager
 TR = 3.29;
 %TR = 3.22;
 
-subject = 'sub-LAM007'
+subject = 'sub-LAM027'
 
 funcDir = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','func',subject);
 %funcDir = fullfile('/media','miplab-nas2','Data','Karolis','high_res_resting','derivatives','func',subject);

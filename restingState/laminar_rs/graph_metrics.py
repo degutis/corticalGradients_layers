@@ -9,8 +9,6 @@ from scipy.stats import f_oneway
 
 import hcp_utils as hcp
 
-from .plots_embedding import plot_on_mmhcp_surface_multipleLayers
-
 
 # ---------- rich club, most common members ----------
 
@@ -55,24 +53,6 @@ def most_common_members(members_list: List[np.ndarray],
     freq = membership.sum(axis=1) / T
     stable = np.where(freq >= min_frac)[0]
     return stable, freq
-
-
-def plot_rich_club(layer1_nodes: List[int],
-                   layer2_nodes: List[int],
-                   layer3_nodes: List[int],
-                   out_dir,
-                   name: str,
-                   n: int = 360):
-    """
-    Functional version of plotRichClub (surface visualization).
-    """
-    Xp = np.zeros((n, 3))
-    for i, rc_nodes in enumerate([layer1_nodes, layer2_nodes, layer3_nodes]):
-        Xp[rc_nodes, i] = 1
-
-    plot_on_mmhcp_surface_multipleLayers(
-        Xp, out_dir, name, eigValue="Rich", folder_name="NetworkMeasures"
-    )
 
 
 # ---------- connectograms ----------

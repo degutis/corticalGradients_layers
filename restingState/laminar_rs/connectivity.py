@@ -3,6 +3,7 @@ from typing import Tuple
 
 import numpy as np
 import networkx as nx  # (still unused here, but kept in case other code relies on it)
+from typing import List, Optional, Tuple
 
 from .config import LaminarConfig
 from .io_utils import group_files_by_layer, load_and_concat_layer
@@ -61,7 +62,6 @@ def thresh_and_binarize(
 
     return A
 
-
 def fisher_z_to_r(z: np.ndarray) -> np.ndarray:
     """
     Inverse Fisher z-transform.
@@ -119,65 +119,8 @@ def build_multiplex_adjacency(per_layer_matrix: np.ndarray,
     return M
 
 
-# ---------- FC helpers ----------
-
-def zero_lag_fc(X: np.ndarray) -> np.ndarray:
-    """Pearson FC of X (n_parcels×T) at lag 0."""
-    Xz = (X - X.mean(axis=1, keepdims=True)) / X.std(axis=1, keepdims=True)
-    return (Xz @ Xz.T) / (X.shape[1] - 1)
-
-
-def lagged_corr(X: np.ndarray, Y: np.ndarray, t: int) -> np.ndarray:
-    """
-    Pearson corr of X(t) with Y(t+t).
-
-    X, Y shape = (n_parcels, T)
-    t > 0: X leads Y
-    t < 0: Y leads X
-    """
-    n, T = X.shape
-    if t >= 0:
-        Xtr, Ytr = X[:, : T - t], Y[:, t:]
-    else:
-        Xtr, Ytr = X[:, -t:], Y[:, : T + t]
-
-    Xz = (Xtr - Xtr.mean(axis=1, keepdims=True)) / Xtr.std(axis=1, keepdims=True)
-    Yz = (Ytr - Ytr.mean(axis=1, keepdims=True)) / Ytr.std(axis=1, keepdims=True)
-    return (Xz @ Yz.T) / (Xtr.shape[1] - 1)
-
 
 # ---------- adjacency matrices ----------
-
-def within_layer_single_run(cfg: LaminarConfig) -> np.ndarray:
-    """
-    Single-run version of the within-layer block matrix.
-
-    Assumes files are ordered by layer 0..L-1.
-    """
-    npy_files = cfg.npy_files()
-    if len(npy_files) < cfg.num_layers:
-        raise ValueError("Not enough .npy files for num_layers")
-
-    adj_layer = np.empty((cfg.N, cfg.N, cfg.num_layers))
-
-    for i, fp in enumerate(npy_files[:cfg.num_layers]):
-        ts = np.load(str(fp))
-        corr = np.corrcoef(ts)
-        adj_layer[:, :, i] = _threshold_corr(corr, cfg.set_thresh, diag_value=1.0)
-
-    I = np.eye(cfg.N)
-    blocks = []
-    for i in range(cfg.num_layers):
-        row = []
-        for j in range(cfg.num_layers):
-            if i == j:
-                row.append(adj_layer[:, :, i])
-            else:
-                row.append(I)
-        blocks.append(row)
-
-    return np.block(blocks)
-
 
 def within_layer_block_matrix(cfg: LaminarConfig,
                               subtract_average: bool = False) -> Tuple[np.ndarray, np.ndarray]:
@@ -223,69 +166,102 @@ def within_layer_block_matrix(cfg: LaminarConfig,
     adj_full = np.block(blocks)
     return adj_full, adj_layer
 
-
-def full_adjacency_single_run(cfg: LaminarConfig) -> Tuple[np.ndarray, np.ndarray]:
+def within_layer_block_matrix_allLayerCombos(
+    cfg: LaminarConfig,
+    diagonal_pairs: Optional[List[Tuple[int, int]]] = None,
+    subtract_average: bool = False,
+) -> Tuple[np.ndarray, np.ndarray]:
+    
     """
-    Concatenate all layers along rows and compute full adjacency for a single session.
+    Multi-run block adjacency with selectable diagonal-block layer pairs.
+
+    By default, diagonal blocks are within-layer correlations:
+    [(0,0), (1,1), ..., (L-1, L-1)].
+
+    Pass `diagonal_pairs` to override. For L=3 with index 0=deep, 1=mid, 2=sup:
+        diagonal_pairs=[(0,2), (1,1), (2,2)]   # deep-sup, mid-mid, sup-sup
+        diagonal_pairs=[(1,0), (1,2), (0,2)]   # mid-deep, mid-sup, deep-sup
+
+    Off-diagonal blocks are identity matrices.
 
     Returns
     -------
-    adj_full : |corr| thresholded matrix
-    all_series : (N*num_layers, T_total) concatenated time series
-    """
-    all_series = []
-
-    for fp in cfg.npy_files():
-        print("Working on file:", fp.name)
-        ts = np.load(str(fp))
-        all_series.append(ts)
-
-    all_series_array = np.concatenate(all_series, axis=0)  # (N*L, T)
-    full_corr = np.corrcoef(all_series_array)
-    full_corr = np.nan_to_num(full_corr, nan=0.0)
-    np.fill_diagonal(full_corr, 1.0)
-    adj_full = _threshold_corr(full_corr, cfg.set_thresh, diag_value=1.0)
-    return adj_full, all_series_array
-
-
-def full_adjacency_multirun(cfg: LaminarConfig) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Concatenate runs within each layer, then across layers, and compute full adjacency.
-
-    Returns
-    -------
-    adj_full : |corr| thresholded matrix
-    all_series : (N*L, T_total) concatenated time series
-    full_corr : raw correlation matrix (N*L, N*L)
+    adj_full : (N*L, N*L) block adjacency.
+    diag_blocks : (N, N, L) the N×N matrices placed on the diagonal blocks,
+                  in the order given by `diagonal_pairs`.
     """
     layer_groups = group_files_by_layer(cfg)
     sorted_layers = sorted(layer_groups.items())
-    concatenated_layers = []
+    L = cfg.num_layers
+    if len(sorted_layers) != L:
+        raise ValueError(f"Expected {L} layers, found {len(sorted_layers)}")
 
+    if diagonal_pairs is None:
+        diagonal_pairs = [(i, i) for i in range(L)]
+    if len(diagonal_pairs) != L:
+        raise ValueError(
+            f"diagonal_pairs must have length {L}, got {len(diagonal_pairs)}"
+        )
+    for (i, j) in diagonal_pairs:
+        if not (0 <= i < L and 0 <= j < L):
+            raise ValueError(f"layer index out of range in pair ({i},{j}); L={L}")
+
+    # Per-layer time series (concatenated across runs)
+    layer_ts = [load_and_concat_layer(cfg, files) for _, files in sorted_layers]
+
+    def pair_corr(i: int, j: int) -> np.ndarray:
+        if i == j:
+            corr = np.corrcoef(layer_ts[i])
+            corr = np.nan_to_num(corr, nan=0.0)
+            np.fill_diagonal(corr, 0.0)
+            return corr
+        stacked = np.vstack([layer_ts[i], layer_ts[j]])      # (2N, T)
+        full = np.corrcoef(stacked)
+        full = np.nan_to_num(full, nan=0.0)
+        cross = full[:cfg.N, cfg.N:]                          # (N, N)
+        return 0.5 * (cross + cross.T)                        # symmetrize
+
+    diag_blocks = np.empty((cfg.N, cfg.N, L))
+    for k, (i, j) in enumerate(diagonal_pairs):
+        diag_blocks[:, :, k] = pair_corr(i, j)
+
+    if subtract_average:
+        avg = diag_blocks.mean(axis=2)
+        diag_blocks -= avg[..., None]
+
+    I = np.eye(cfg.N)
+    blocks = [
+        [diag_blocks[:, :, i] if i == j else I for j in range(L)]
+        for i in range(L)
+    ]
+    adj_full = np.block(blocks)
+
+    return adj_full, diag_blocks
+
+def full_adjacency_multirun(cfg: LaminarConfig) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Multi-run, full adjacency: concatenate runs within each layer, then
+    concatenate layers along rows and compute the full (N*L, N*L) correlation.
+
+    Returns
+    -------
+    adj_full : (N*L, N*L) thresholded adjacency
+    full_corr : (N*L, N*L) raw correlation matrix (with 0 diagonal)
+    """
+    layer_groups = group_files_by_layer(cfg)
+    sorted_layers = sorted(layer_groups.items())
+    L = cfg.num_layers
+    if len(sorted_layers) != L:
+        raise ValueError(f"Expected {L} layers, found {len(sorted_layers)}")
+
+    layer_series = []
     for layer_idx, files in sorted_layers:
-        print(f"Processing Layer {layer_idx} with {len(files)} run(s)")
-        concatenated = load_and_concat_layer(cfg, files)
-        concatenated_layers.append(concatenated)
-        print(f"Concatenated shape: {concatenated.shape}")
+        concatenated = load_and_concat_layer(cfg, files)   # (N, T_layer)
+        layer_series.append(concatenated)
 
-    all_series = np.concatenate(concatenated_layers, axis=0)  # (N*L, T)
+    all_series = np.concatenate(layer_series, axis=0)      # (N*L, T)
     full_corr = np.corrcoef(all_series)
-    np.fill_diagonal(full_corr, 0.0)
     full_corr = np.nan_to_num(full_corr, nan=0.0)
-    adj_full = _threshold_corr(full_corr, cfg.set_thresh, diag_value=0.0)
-    return adj_full, all_series, full_corr
+    np.fill_diagonal(full_corr, 0.0)
 
-
-def adjacency_single_layer(cfg: LaminarConfig, file_index: int) -> np.ndarray:
-    """
-    Thresholded adjacency for a single layer file by index in cfg.npy_files().
-    """
-    npy_files = cfg.npy_files()
-    if file_index < 0 or file_index >= len(npy_files):
-        raise IndexError("file_index out of range")
-    fp = npy_files[file_index]
-    print("Working on file:", fp.name)
-    ts = np.load(str(fp))
-    corr = np.corrcoef(ts)
-    adj = _threshold_corr(corr, cfg.set_thresh, diag_value=1.0)
-    return adj
+    return full_corr, full_corr

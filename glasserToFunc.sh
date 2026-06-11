@@ -3,7 +3,7 @@
 export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/
 # export SUBJECTS_DIR=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer/
 
-subject=sub-LAM007
+subject=sub-LAM027
 refAnatDir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ref_anat/${subject}
 # refAnatDir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ref_anat/${subject}
 

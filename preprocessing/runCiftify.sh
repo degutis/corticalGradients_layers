@@ -1,12 +1,12 @@
 # export PATH=$PATH:/Users/karolis/Desktop/repos/MSM
 
-subject=sub-04
-# fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer
-fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer
+subject=sub-LAM023
+fs_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer
+# fs_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/freesurfer
 
 
-# ciftify_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ciftify/
-ciftify_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ciftify/
+ciftify_dir=/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/ciftify/
+# ciftify_dir=/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/ciftify/
 mkdir -p ${ciftify_dir}
 
 # MSM_config_file=/opt/homebrew/Caskroom/miniconda/base/envs/analysis/lib/python3.10/site-packages/ciftify/data/hcp_config/MSMSulcStrainFinalconf

@@ -29,13 +29,8 @@ from .connectivity import (
     thresh_and_binarize,
     fisher_z_to_r,
     build_multiplex_adjacency,
-    zero_lag_fc,
-    lagged_corr,
-    within_layer_single_run,
     within_layer_block_matrix,
-    full_adjacency_single_run,
     full_adjacency_multirun,
-    adjacency_single_layer,
 )
 
 # Embedding (Laplacian, scree, diagnostics)
@@ -49,16 +44,10 @@ from .embedding import (
 
 # Embedding-space plots & brain maps
 from .plots_embedding import (
-    run_kmeans,
-    plot_two_dim_embedding,
     plot_scatter_with_global_correlation,
     plot_scatter3D_with_plane,
     plot_scatter_centroids,
     plot_network_centroids3D,
-    plot_on_mmhcp_surface_multipleLayers,
-    eigvecs_to_nifti,
-    plot_two_dim_embedding_byNetwork,
-    plot_rsn_distributions,
     plot_rsn_distributions_by_network,
 )
 
@@ -66,7 +55,6 @@ from .plots_embedding import (
 from .graph_metrics import (
     rich_club_sweep,
     most_common_members,
-    plot_rich_club,
     get_top_percent_edges,
     plot_connectogram,
     plot_connectogram_allInOne,
@@ -79,8 +67,8 @@ from .graph_metrics import (
 
 # Statistical models / regressions
 from .models import (
-    run_ff_fb_models,
     plot_horizontal_correlation_bar,
+    plot_horizontal_correlation_bar_partial,
 )
 
 # Reliability analyses
@@ -93,17 +81,8 @@ from .reliability import (
 from .gradients import (
     run_gradient_analysis,
     run_gradient_analysis_auto,
-    run_gradient_analysis_affinity,
     inter_areal_dissimilarity,
     intra_areal_dissimilarity,
-    laminar_cosine_similarity_matrices,
-    csp_like_layer_vs_mean,
-    sign_invariant_distance,
-    runClusterAnalysis,
-    convert_eigvals_to_list,
-    plotEigvectors_similar_distinct,
-    plot_cosine_similarity,
-    cosine_similarity_upper,
 )
 
 # Flatmaps & matrix plotting
@@ -172,13 +151,8 @@ __all__ = [
     "thresh_and_binarize",
     "fisher_z_to_r",
     "build_multiplex_adjacency",
-    "zero_lag_fc",
-    "lagged_corr",
-    "within_layer_single_run",
     "within_layer_block_matrix",
-    "full_adjacency_single_run",
     "full_adjacency_multirun",
-    "adjacency_single_layer",
 
     # Embedding
     "run_laplacian_embedding",
@@ -188,22 +162,15 @@ __all__ = [
     "plot_eigenvector_correlation",
 
     # Embedding plots & brain maps
-    "run_kmeans",
-    "plot_two_dim_embedding",
     "plot_scatter_with_global_correlation",
     "plot_scatter3D_with_plane",
     "plot_scatter_centroids",
     "plot_network_centroids3D",
-    "plot_on_mmhcp_surface_multipleLayers",
-    "eigvecs_to_nifti",
-    "plot_two_dim_embedding_byNetwork",
-    "plot_rsn_distributions",
     "plot_rsn_distributions_by_network",
 
     # Graph metrics
     "rich_club_sweep",
     "most_common_members",
-    "plot_rich_club",
     "get_top_percent_edges",
     "plot_connectogram",
     "plot_connectogram_allInOne",
@@ -214,8 +181,8 @@ __all__ = [
     "eigenvector_centrality_plot_avg",
 
     # Models
-    "run_ff_fb_models",
     "plot_horizontal_correlation_bar",
+    "plot_horizontal_correlation_bar_partial",
 
     # Reliability
     "compute_reliability",
@@ -224,17 +191,8 @@ __all__ = [
     # Gradients
     "run_gradient_analysis",
     "run_gradient_analysis_auto",
-    "run_gradient_analysis_affinity",
     "inter_areal_dissimilarity",
     "intra_areal_dissimilarity",
-    "laminar_cosine_similarity_matrices",
-    "csp_like_layer_vs_mean",
-    "sign_invariant_distance",
-    "runClusterAnalysis",
-    "convert_eigvals_to_list",
-    "plotEigvectors_similar_distinct",
-    "plot_cosine_similarity",
-    "cosine_similarity_upper",
 
     # Flatmaps
     "plotMatrix",
