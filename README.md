@@ -9,7 +9,7 @@ This repository contains the complete pipeline to recreate the analysis and plot
 
 To execute the main analysis:
 
-- Run `runRestingState.py` in the restingState folder using Python.
+- Run `runRestingState_inter.py` in the restingState folder using Python.
 
 ## Requirements
 
