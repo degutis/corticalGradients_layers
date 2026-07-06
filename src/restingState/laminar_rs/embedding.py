@@ -7,9 +7,6 @@ import scipy.sparse.linalg
 import scipy.linalg
 import matplotlib.pyplot as plt
 
-from .config import LaminarConfig
-
-
 def run_laplacian_embedding(M: np.ndarray,
                             out_dir,
                             name: str,

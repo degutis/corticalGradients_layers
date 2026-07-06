@@ -1,0 +1,16 @@
+name: laminar-demo
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - nibabel
+  - nilearn
+  - jupyterlab
+  - ipython
+  - pip
+  - pip:
+      - brainspace

@@ -27,24 +27,10 @@ def _layer_binning(layer_data, analysis_type, layer_01=True, eight_layers=False)
     layer_binary = np.zeros_like(layer_data, dtype=np.uint8)
     if layer_01:
         at = analysis_type.lower()
-        if "eightlayers" in at or eight_layers:
-            # 8 layers (open intervals as in your original code)
-            layer_binary[(layer_data > 0.1) & (layer_data <= 0.2)] = 1
-            layer_binary[(layer_data > 0.2) & (layer_data <  0.3)] = 2
-            layer_binary[(layer_data > 0.3) & (layer_data <  0.4)] = 3
-            layer_binary[(layer_data > 0.4) & (layer_data <  0.5)] = 4
-            layer_binary[(layer_data > 0.5) & (layer_data <  0.6)] = 5
-            layer_binary[(layer_data > 0.6) & (layer_data <  0.7)] = 6
-            layer_binary[(layer_data > 0.7) & (layer_data <  0.8)] = 7
-            layer_binary[(layer_data > 0.8) & (layer_data <  0.9)] = 8
-        elif "smallgap" in at:
+        if "smallgap" in at:
             layer_binary[(layer_data > 0)   & (layer_data <= 0.3)] = 1
             layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
             layer_binary[(layer_data > 0.7) & (layer_data <  1.0)] = 3
-        elif "nogap" in at:
-            layer_binary[(layer_data > 0)   & (layer_data <= 0.4)] = 1
-            layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
-            layer_binary[(layer_data > 0.6) & (layer_data <  1.0)] = 3
         elif "largegap" in at:
             layer_binary[(layer_data > 0)   & (layer_data <= 0.2)] = 1
             layer_binary[(layer_data > 0.4) & (layer_data <= 0.6)] = 2
@@ -73,14 +59,12 @@ def averageVoxels_parcels(
     Saves one .npy per layer plus a concatenated 'all layers' file.
 
     Paths:
-      - Tries 'high_res_resting/derivatives' first, then 'huppi_high_res_resting/derivatives'.
       - Atlas filenames follow: '{atlas}_L_in-func.nii' and '{atlas}_R_in-func.nii'.
     """
     atlas = atlas.lower()
     if atlas not in ("schaefer", "glasser"):
         raise ValueError("atlas must be 'schaefer' or 'glasser'")
 
-    # Build candidate paths (we'll pick the first that exists for each file)
     base_candidates = [
         "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives",
     ]
@@ -126,10 +110,8 @@ def averageVoxels_parcels(
 
     # ----- atlas-specific preprocessing & expected parcels -----
     if atlas == "schaefer":
-        # Your original Schaefer approach (hemispheres sum since they don't overlap)
         atlas_data = atlasR + atlasL
         expected_n = 400
-        # expected labels 1..400
         index_to_code = np.arange(1, expected_n + 1, dtype=int)
 
     elif atlas == "glasser":
@@ -138,7 +120,6 @@ def averageVoxels_parcels(
         atlas_data = atlasL_off + atlasR_off
         expected_n = 360 
 
-        # Build stable ordering: Left(1..180) then Right(1..180)
         index_to_code = np.concatenate([
             np.arange(1001, 1181, dtype=int),  # left 1..180 → 1001..1180
             np.arange(2001, 2181, dtype=int),  # right 1..180 → 2001..2180

@@ -1,0 +1,33 @@
+# Requirements
+
+# Python packages
+# --- scientific core ---
+numpy==1.23.5
+pandas==1.5.3
+scipy==1.10.1
+scikit-learn==1.3.2
+statsmodels==0.14.5
+networkx==3.4.2
+matplotlib==3.7.5
+tqdm==4.66.6
+
+# --- neuroimaging / gradients ---
+nibabel==5.1.0
+brainspace==0.1.21
+hcp-utils==0.1.0
+enigmatoolbox==2.0.3
+neuromaps==0.0.5
+netneurotools==0.3.0
+
+# =====================================
+# External software 
+# -------------------------------------
+  FreeSurfer          7.3.2
+  CAT12               12.8.2
+  ciftify             2.3.3
+  ANTs                2.5.3
+  LAYNII              2.7.0
+  AFNI                24.2.04
+  SPM12               r7771
+  ConnectomeWorkbench 2.0.0
+  MATLAB              2021b

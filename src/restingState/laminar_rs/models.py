@@ -10,11 +10,8 @@ import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import os
-import laminar_rs.schaefer_stats as schaefer_stats
-import os
-from typing import Dict, List, Optional, Callable, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import matplotlib as mpl
 from scipy.stats import pearsonr
 from statsmodels.stats.multitest import multipletests
 

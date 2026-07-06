@@ -42,9 +42,6 @@ DATA_SET = "huppi"
 if DATA_SET=="huppi":
     BASE = Path("/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/correlations")
     SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22]
-elif DATA_SET=="kd":
-    BASE = Path("/media/miplab-nas2/Data/Karolis/high_res_resting/derivatives/correlations")
-    SUBJECTS = [1,2,4]
 
 if ATLAS=="schaefer":
     N = 400

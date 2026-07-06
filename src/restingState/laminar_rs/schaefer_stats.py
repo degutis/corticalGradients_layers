@@ -13,14 +13,12 @@ This module provides:
 
 from __future__ import annotations
 
-import csv
 from typing import Dict, List, Mapping, Sequence, Tuple
 
 import nibabel as nib
 import numpy as np
 import pandas as pd
 from brainspace.datasets import load_conte69
-from brainspace.null_models import SpinPermutations
 from enigmatoolbox.permutation_testing import (
     rotate_parcellation,
     perm_sphere_p,

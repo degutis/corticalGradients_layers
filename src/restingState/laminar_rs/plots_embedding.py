@@ -4,22 +4,17 @@
 # for the Schaefer-400 and Glasser/HCP-MMP1.0 atlases.
 
 from __future__ import annotations
-import os
 from pathlib import Path
-from typing import Tuple, List, Optional, Dict, Literal, Sequence
+from typing import Tuple, List, Optional, Literal, Sequence
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pandas as pd
 from matplotlib.lines import Line2D
-from sklearn.cluster import KMeans
 import nibabel as nib
-from nilearn import plotting
 from scipy.stats import pearsonr, t as t_dist
 from scipy.stats import f_oneway, gaussian_kde
-
-import hcp_utils as hcp
 
 
 # ---------- Yeo network metadata ----------

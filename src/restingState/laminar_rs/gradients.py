@@ -12,15 +12,12 @@ This module provides:
 from __future__ import annotations
 
 import os
-from collections import defaultdict
-from typing import Dict, List, Sequence, Tuple
+from typing import List, Tuple
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from brainspace.gradient import GradientMaps
-from scipy.spatial.distance import pdist, squareform
-from sklearn.cluster import AgglomerativeClustering
 
 # ---------------------------------------------------------------------
 # Internal helpers
