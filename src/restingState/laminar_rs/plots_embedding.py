@@ -253,7 +253,7 @@ def _net_from_name(name: str, yeo_n: int, atlas_kind: str) -> int:
 
 
 def _load_glasser_yeo7_assignments(
-        path: str = "cortex_parcel_network_assignments_Yeo7.txt"
+        path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt"
 ) -> np.ndarray:
     """
     Load Yeo-7 assignments for the 360 Glasser/HCP-MMP parcels from a file
@@ -286,7 +286,7 @@ def _load_glasser_yeo7_assignments(
 
 
 def _load_glasser_yeo17_assignments(
-        path: str = "cortex_parcel_network_assignments_Yeo17.txt"
+        path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt"
 ) -> np.ndarray:
     """
     Load Yeo-17 assignments for the 360 Glasser/HCP-MMP parcels from a file
@@ -329,8 +329,8 @@ def _get_yeo_assignments(
         yeo_n: int = 7,
         schaefer_label_L: Optional[str] = None,
         schaefer_label_R: Optional[str] = None,
-        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+        glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
 ) -> Tuple[np.ndarray, List[str]]:
     """
     Unified helper: returns (networks0, default_labels) for the requested
@@ -419,6 +419,59 @@ def _legend_order(yeo_n: int, present: set) -> List[int]:
         order = list(range(17))
     return [i for i in order if i in present]
 
+def _fdr_bh(
+    p_vals: np.ndarray,
+    alpha: float = 0.05,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Benjamini-Hochberg FDR correction.
+
+    Handles NaN p-values (e.g. networks where the ANOVA failed) by excluding
+    them from the correction and returning NaN / False in their positions.
+
+    Parameters
+    ----------
+    p_vals : np.ndarray
+        Raw p-values, may contain NaNs.
+    alpha : float
+        Desired false discovery rate.
+
+    Returns
+    -------
+    p_fdr : np.ndarray
+        BH-adjusted p-values (q-values), same shape as `p_vals`. NaN where
+        the input was NaN.
+    sig_mask : np.ndarray of bool
+        True where the adjusted p-value <= alpha. False where input was NaN.
+    """
+    p_vals = np.asarray(p_vals, dtype=float)
+    p_fdr = np.full(p_vals.shape, np.nan, dtype=float)
+    sig_mask = np.zeros(p_vals.shape, dtype=bool)
+
+    finite = np.isfinite(p_vals)
+    m = int(finite.sum())
+    if m == 0:
+        return p_fdr, sig_mask
+
+    idx = np.where(finite)[0]
+    p = p_vals[idx]
+
+    # Sort ascending, apply BH step-up, then enforce monotonicity
+    order = np.argsort(p)
+    ranks = np.arange(1, m + 1)
+    q_sorted = p[order] * m / ranks
+    # Ensure q is monotone non-decreasing from the largest p downward
+    q_sorted = np.minimum.accumulate(q_sorted[::-1])[::-1]
+    q_sorted = np.clip(q_sorted, 0.0, 1.0)
+
+    # Un-sort back to the original finite ordering
+    q = np.empty(m, dtype=float)
+    q[order] = q_sorted
+
+    p_fdr[idx] = q
+    sig_mask[idx] = q <= alpha
+    return p_fdr, sig_mask
+
 
 # ---------- 2D scatter with regression & marginals ----------
 
@@ -438,8 +491,8 @@ def plot_scatter_with_global_correlation(
         yeo_n: int = 7,
         schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
         schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
-        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+        glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
         show_marginal_hists: bool = True,
         hist_bins: int = 30,
         hist_size: float = 0.1,
@@ -676,8 +729,8 @@ def plot_scatter3D_with_plane(
         yeo_n: int = 7,
         schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
         schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
-        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+        glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
         show_marginals: bool = True,
         hist_bins: int = 20,
 ):
@@ -924,8 +977,8 @@ def plot_scatter_centroids(
         yeo_n: int = 7,
         schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
         schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
-        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+        glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
 ):
     """
     2D centroids (RSN × layer) for Yeo-7 / Yeo-17 networks.
@@ -1072,8 +1125,8 @@ def plot_network_centroids3D(
         yeo_n: int = 7,
         schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
         schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
-        glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-        glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+        glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+        glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
 ):
     """
     3D Yeo network centroids (single point per RSN), joined by a non-crossing cycle.
@@ -1391,8 +1444,8 @@ def plot_rsn_distributions_by_network(
     yeo_n: int = 7,
     schaefer_label_L: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.L.label.gii",
     schaefer_label_R: str = "/home/degutis/repos/SchaeferAtlas/Schaefer400_7N.R.label.gii",
-    glasser_yeo7_path: str = "cortex_parcel_network_assignments_Yeo7.txt",
-    glasser_yeo17_path: str = "cortex_parcel_network_assignments_Yeo17.txt",
+    glasser_yeo7_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo7.txt",
+    glasser_yeo17_path: str = "laminar_rs/cortex_parcel_network_assignments_Yeo17.txt",
     network_labels: Optional[List[str]] = None,
     array_labels: Optional[List[str]] = None,
     kind: Literal["violin", "bar", "raincloud"] = "raincloud",

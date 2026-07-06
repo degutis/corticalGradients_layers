@@ -31,8 +31,8 @@ import laminar_rs.schaefer_stats as stats
 
 # ----------------- Parameters -----------------
 
-ATLAS = "schaefer"
-# ATLAS = "glasser"
+# ATLAS = "schaefer"
+ATLAS = "glasser"
 YEO_N = 7   # or 17 
 NUM_LAYERS = 3
 LARGE_GAP = False
@@ -143,10 +143,10 @@ def main() -> None:
     #                           Flatmaps and surface maps
     # ---------------------------------------------------------------------
     
-    out_inter = plotSurfaceMap(D_inter, output, "SurfaceMap_interFlatMap.png", vmin=0.95,vmax=1.04, cmap = "viridis", HCP=HCP)
-    out_interD = plotSurfaceMap(D_inter_deep, output, "SurfaceMap_interFlatMap_deep.png", vmin=0.95,vmax=1.06, cmap = "viridis", HCP=HCP)
-    out_interM = plotSurfaceMap(D_inter_mid, output, "SurfaceMap_interFlatMap_mid.png", vmin=0.95,vmax=1.06, cmap = "viridis", HCP=HCP)
-    out_interS = plotSurfaceMap(D_inter_sup, output, "SurfaceMap_interFlatMap_sup.png", vmin=0.95,vmax=1.06, cmap = "viridis", HCP=HCP)
+    out_inter = plotSurfaceMap(D_inter, output, "SurfaceMap_interFlatMap.png", vmin=0.98,vmax=1.02, cmap = "viridis", HCP=HCP)
+    out_interD = plotSurfaceMap(D_inter_deep, output, "SurfaceMap_interFlatMap_deep.png", vmin=0.98,vmax=1.02, cmap = "viridis", HCP=HCP)
+    out_interM = plotSurfaceMap(D_inter_mid, output, "SurfaceMap_interFlatMap_mid.png", vmin=0.98,vmax=1.02, cmap = "viridis", HCP=HCP)
+    out_interS = plotSurfaceMap(D_inter_sup, output, "SurfaceMap_interFlatMap_sup.png", vmin=0.98,vmax=1.02, cmap = "viridis", HCP=HCP)
 
 
     plot_rsn_distributions_by_network([D_inter_deep, D_inter_mid, D_inter_sup], out_dir=output, name="RSN_interLayers", 
