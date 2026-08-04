@@ -20,7 +20,7 @@ def _normalize_analysis_type(analysis_type, atlas):
     """
     if "Schaefer" in analysis_type or "Glasser" in analysis_type:
         return analysis_type
-    return f"{analysis_type}_Schaefer" if atlas.lower() == "schaefer" else analysis_type
+    return f"{analysis_type}_Schaefer" if atlas.lower() == "schaefer" else f"{analysis_type}_Glasser"
 
 def _layer_binning(layer_data, analysis_type, layer_01=True, eight_layers=False):
     """Return integer layer labels (0 = ignore) according to your rules."""
@@ -185,8 +185,10 @@ subjects = [
     "sub-LAM001","sub-LAM002","sub-LAM003","sub-LAM004","sub-LAM005","sub-LAM006",
     "sub-LAM007","sub-LAM009","sub-LAM010","sub-LAM011","sub-LAM012","sub-LAM013",
     "sub-LAM014","sub-LAM015","sub-LAM016","sub-LAM017","sub-LAM018","sub-LAM019",
-    "sub-LAM021","sub-LAM022"
+    "sub-LAM021","sub-LAM022","sub-LAM023","sub-LAM024","sub-LAM025","sub-LAM026",
+    "sub-LAM027","sub-LAM028","sub-LAM029","sub-LAM030","sub-LAM031"
 ]
 
+
 for s in subjects:
-    averageVoxels_parcels(subject=s, runNum="run1", analysis_type="smallGap", atlas="glasser", layer_01=True)
+    averageVoxels_parcels(subject=s, runNum="run1", analysis_type="smallGap", atlas="schaefer", layer_01=True)

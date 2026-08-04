@@ -4,7 +4,7 @@ import os
 import sys
 
 os.environ["SUBJECTS_DIR"] = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting/derivatives/freesurfer/"
-script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/fmri-analysis/library"
+script_dir = "/home/degutis/dynamicConnectivityMovieWatching_2025/src/preprocessing/fmri-analysis/library"
 os.environ["PATH"] += os.pathsep + script_dir
 sys.path.append(script_dir)
 
@@ -174,7 +174,5 @@ def process_ref_anat_subject(studyDataDir, subject):
 
 if __name__ == "__main__":
     studyDir = "/media/miplab-nas2/Data/Karolis/huppi_high_res_resting"
-    subject = "sub-LAM023"
-    # studyDir = "/media/miplab-nas2/Data/Karolis/high_res_resting"
-    # subject = "sub-02"
+    subject = "sub-LAM026"
     process_ref_anat_subject(studyDir, subject)

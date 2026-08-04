@@ -4,24 +4,21 @@ addpath(genpath('/home/degutis/repos/spm'));
 spm('Defaults','fmri');  % Initialize SPM
 spm_jobman('initcfg');   % Initialize job manager
 
-TR = 3.29;
-%TR = 3.22;
+TR = 3.29; %3.22;
 
-subject = 'sub-LAM027'
+subject = 'sub-LAM026'
 
 funcDir = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','func',subject);
-%funcDir = fullfile('/media','miplab-nas2','Data','Karolis','high_res_resting','derivatives','func',subject);
 
-%funcFiles = dir(fullfile(funcDir, '*_NORDIC_mc.nii'));
-%motionFiles = dir(fullfile(funcDir, '*_NORDIC_mc.par'));
+funcFiles = dir(fullfile(funcDir, '*_NORDIC_mc.nii'));
+motionFiles = dir(fullfile(funcDir, '*_NORDIC_mc.par'));
 
-funcFiles = dir(fullfile(funcDir, '*_mc.nii'));
-motionFiles = dir(fullfile(funcDir, '*_mc.par'));
-
+if isempty(funcFiles)
+    funcFiles = dir(fullfile(funcDir, '*_mc.nii'));
+    motionFiles = dir(fullfile(funcDir, '*_mc.par'));
+end
 
 atlas_file = fullfile('/media','miplab-nas2','Data','Karolis','huppi_high_res_resting','derivatives','ref_anat',subject,'HCP-MMP1_in-func.nii');
-%atlas_file = fullfile('/media','miplab-nas2','Data','Karolis','high_res_resting','derivatives','ref_anat',subject,'HCP-MMP1_in-func.nii');
-atlas_file
 
 V_a = spm_vol(atlas_file);
 Y_a = spm_read_vols(V_a);     
